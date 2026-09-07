@@ -104,6 +104,13 @@ file(GLOB_RECURSE BOARD_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/boards/${BOARD_TYPE}/*/*.c
     ${CMAKE_CURRENT_SOURCE_DIR}/boards/${BOARD_TYPE}/*/*.cc
 )
+# V2.0 replaces the page-bound pomodoro/sleep implementation with the
+# independent feature timer. Keep the legacy sources in history for reference,
+# but do not link their tasks, pages, or image blobs into this board firmware.
+if(CONFIG_BOARD_TYPE_CYBERVOC_V2_0)
+    list(FILTER BOARD_SOURCES EXCLUDE REGEX ".*/customer_ui/alarm_.*\\.(c|cc)$")
+    list(FILTER BOARD_SOURCES EXCLUDE REGEX ".*/customer_ui/images/.*\\.c$")
+endif()
 list(APPEND SOURCES ${BOARD_SOURCES})
 
 # Select audio processor according to Kconfig
@@ -450,7 +457,27 @@ if ("${size}" AND "${offset}")
         set(ASSETS_PARTITION "assets")
 
         set(ASSETS_FILE "${CMAKE_BINARY_DIR}/${ASSETS_NAME}.bin")
+        if(CONFIG_BOARD_TYPE_CYBERVOC_V2_0)
+            set(V2_ASSET_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/boards/CyberVoc-Board-V2_0")
+            file(GLOB_RECURSE V2_ASSET_INPUTS CONFIGURE_DEPENDS
+                 "${V2_ASSET_ROOT}/assets/*" "${V2_ASSET_ROOT}/car_packs/*")
+            set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+                         ${V2_ASSET_INPUTS} "${PROJECT_DIR}/scripts/prepare_v2_assets.py")
+            set(ASSETS_EXTERNAL_PATH "${CMAKE_BINARY_DIR}/v2_assets")
+            execute_process(COMMAND ${PYTHON} "${PROJECT_DIR}/scripts/prepare_v2_assets.py"
+                --source "${V2_ASSET_ROOT}/assets" --packs "${V2_ASSET_ROOT}/car_packs"
+                --output "${ASSETS_EXTERNAL_PATH}" COMMAND_ERROR_IS_FATAL ANY)
+        endif()
         build_speaker_assets_bin("${ASSETS_PARTITION}" ${BUILD_RESOLUTION} ${ASSETS_FILE} ${CONFIG_MMAP_FILE_NAME_LENGTH} ${ASSETS_EXTERNAL_PATH})
+        if(CONFIG_BOARD_TYPE_CYBERVOC_V2_0)
+            add_custom_command(OUTPUT ${ASSETS_FILE} APPEND
+                DEPENDS ${V2_ASSET_INPUTS} "${PROJECT_DIR}/scripts/prepare_v2_assets.py")
+            add_custom_target(v2_image_check ALL
+                COMMAND ${PYTHON} "${PROJECT_DIR}/scripts/verify_v2_images.py" --build-dir "${CMAKE_BINARY_DIR}"
+                DEPENDS gen_project_binary srmodels_bin partition_table_bin ${ASSETS_FILE}
+                COMMENT "Validate V2 application, model and animation partitions")
+            add_dependencies(flash v2_image_check)
+        endif()
         message(STATUS "Generated emote assets: ${ASSETS_FILE} -> ${ASSETS_PARTITION} partition")
         esptool_py_flash_to_partition(flash "${ASSETS_PARTITION}" "${ASSETS_FILE}")
     elseif(CONFIG_FLASH_NONE_ASSETS)

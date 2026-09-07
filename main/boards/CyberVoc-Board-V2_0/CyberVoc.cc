@@ -17,6 +17,7 @@
 #include "touch_sensor.h"
 #include "ui_bridge.h"
 #include "settings.h"
+#include <nvs.h>
 
 #include <wifi_manager.h>
 #include <esp_log.h>
@@ -28,6 +29,7 @@
 #include <esp_lcd_st77916.h>
 #include <esp_system.h>
 #include <esp_timer.h>
+#include "customer_ui/feature_ui.h"
 #include <driver/temperature_sensor.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -537,6 +539,7 @@ void EspS3Cat::InitializeCst816sTouchPad()
         return;
     }
 
+    cst816s_touch_->attach_release_fallback(touch);
     ui_bridge_attach_gesture_handler(touch);
     ESP_LOGI(TAG, "Touch registered successfully");
 }
@@ -569,9 +572,19 @@ void EspS3Cat::ShowHappyTouchFeedback()
 
 void EspS3Cat::SetHeadTouchEnabled(bool enabled)
 {
-    head_touch_enabled_ = enabled;
-    Settings settings(kFeatureSettingsNamespace, true);
-    settings.SetBool(kHeadTouchEnabledKey, enabled);
+    nvs_handle_t handle;
+    esp_err_t err = nvs_open(kFeatureSettingsNamespace, NVS_READWRITE, &handle);
+    if (err == ESP_OK) {
+        err = nvs_set_u8(handle, kHeadTouchEnabledKey, enabled ? 1 : 0);
+        if (err == ESP_OK) err = nvs_commit(handle);
+        nvs_close(handle);
+    }
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Head touch save failed: %s", esp_err_to_name(err));
+        if (display_) display_->ShowNotification("Cannot save touch setting");
+        return;
+    }
+    head_touch_enabled_.store(enabled);
     ESP_LOGI(TAG, "Head touch %s (saved to NVS)", enabled ? "enabled" : "disabled");
 }
 
@@ -599,7 +612,7 @@ void EspS3Cat::head_touch_gpio_task(void* arg)
     while (true) {
         const int raw_level = gpio_get_level(HEAD_TOUCH_GPIO);
         if (raw_level == last_raw_level) {
-            ++same_count;
+            if (same_count < kDebounceSamples) ++same_count;
         } else {
             last_raw_level = raw_level;
             same_count = 1;
@@ -624,13 +637,16 @@ void EspS3Cat::head_touch_gpio_task(void* arg)
                         was_active = active;
                         continue;
                     }
-                    auto& app = Application::GetInstance();
-                    if (app.GetDeviceState() == kDeviceStateListening || app.GetDeviceState() == kDeviceStateSpeaking) {
-                        app.TriggerWakeWord(Lang::Strings::TOUCH_HEAD);
-                    } else if (app.GetDeviceState() == kDeviceStateIdle) {
-                        app.WakeWordInvoke(std::string(Lang::Strings::TOUCH_HEAD));
-                    }
-                    self->ShowHappyTouchFeedback();
+                    Application::GetInstance().Schedule([self]() {
+                        if (!self->head_touch_enabled_.load() || !ui_bridge_is_on_home_page() ||
+                            ui_bridge_interactions_suppressed() || feature_car_is_enabled()) return;
+                        auto& app = Application::GetInstance();
+                        if (app.GetDeviceState() == kDeviceStateListening || app.GetDeviceState() == kDeviceStateSpeaking)
+                            app.TriggerWakeWord(Lang::Strings::TOUCH_HEAD);
+                        else if (app.GetDeviceState() == kDeviceStateIdle)
+                            app.WakeWordInvoke(std::string(Lang::Strings::TOUCH_HEAD));
+                        self->ShowHappyTouchFeedback();
+                    });
                 }
             }
             was_active = active;
@@ -670,6 +686,13 @@ void EspS3Cat::InitializeHeadTouchGpio()
 
 namespace Qmi8658Motion {
 static i2c_master_dev_handle_t qmi_dev_ = nullptr;
+static uint32_t sample_counter_ = 0;
+static bool has_counter_ = false;
+static void Disconnect() {
+    if (qmi_dev_) i2c_master_bus_rm_device(qmi_dev_);
+    qmi_dev_ = nullptr;
+    has_counter_ = false;
+}
 
 struct RawSample {
     int16_t ax = 0;
@@ -694,7 +717,7 @@ static esp_err_t ReadRegs(uint8_t reg, uint8_t* data, size_t len)
     if (qmi_dev_ == nullptr) {
         return ESP_ERR_INVALID_STATE;
     }
-    return i2c_master_transmit_receive(qmi_dev_, &reg, 1, data, len, 100);
+    return i2c_master_transmit_receive(qmi_dev_, &reg, 1, data, len, 20);
 }
 
 static esp_err_t Initialize(i2c_master_bus_handle_t i2c_bus, uint8_t addr)
@@ -729,25 +752,34 @@ static esp_err_t Initialize(i2c_master_bus_handle_t i2c_bus, uint8_t addr)
         return ret == ESP_OK ? ESP_ERR_NOT_FOUND : ret;
     }
 
-    ret = WriteReg(0x02, 0x60);
-    if (ret != ESP_OK) return ret;
-    ret = WriteReg(0x03, (0x02 << 4) | 0x05);
-    if (ret != ESP_OK) return ret;
-    ret = WriteReg(0x04, (0x04 << 4) | 0x05);
-    if (ret != ESP_OK) return ret;
-    ret = WriteReg(0x08, 0x03);
-    if (ret != ESP_OK) return ret;
-
-    ESP_LOGI(TAG, "QMI8658A initialized at I2C address 0x%02X", addr);
+    // QMI8658A: ADDR_AI=1, BE=0; explicit little endian matches le16.
+    // +/-8g, +/-512dps, ODR 56.05 Hz, default bandwidth ~15.4 Hz.
+    const uint8_t registers[] = {0x02, 0x03, 0x04, 0x08};
+    const uint8_t values[] = {0x40, 0x27, 0x47, 0x03};
+    for (unsigned i = 0; i < sizeof(registers); ++i) {
+        uint8_t readback = 0;
+        ret = WriteReg(registers[i], values[i]);
+        if (ret == ESP_OK) ret = ReadRegs(registers[i], &readback, 1);
+        if (ret != ESP_OK || readback != values[i]) {
+            ESP_LOGE(TAG, "QMI config 0x%02x wanted=0x%02x read=0x%02x", registers[i], values[i], readback);
+            Disconnect();
+            return ret == ESP_OK ? ESP_ERR_INVALID_RESPONSE : ret;
+        }
+    }
+    ESP_LOGI(TAG, "QMI8658A 0x%02X ready: CTRL1=40 CTRL2=27 CTRL3=47 CTRL7=03", addr);
     return ESP_OK;
 }
 
 static bool ReadRaw(RawSample& sample)
 {
-    uint8_t data[12] = {};
-    if (ReadRegs(0x35, data, sizeof(data)) != ESP_OK) {
-        return false;
-    }
+    uint8_t status = 0, counters[3] = {}, data[12] = {};
+    if (ReadRegs(0x2e, &status, 1) != ESP_OK || (status & 3) != 3 ||
+        ReadRegs(0x30, counters, 3) != ESP_OK) return false;
+    const uint32_t counter = counters[0] | (uint32_t(counters[1]) << 8) | (uint32_t(counters[2]) << 16);
+    if (has_counter_ && counter == sample_counter_) return false;
+    if (ReadRegs(0x35, data, sizeof(data)) != ESP_OK) return false;
+    sample_counter_ = counter;
+    has_counter_ = true;
     auto le16 = [](const uint8_t* p) -> int16_t {
         return static_cast<int16_t>((static_cast<uint16_t>(p[1]) << 8) | p[0]);
     };
@@ -777,9 +809,37 @@ void EspS3Cat::imu_event_task(void* arg)
     constexpr int kShakeDeltaThreshold = 36000;
     constexpr int kGyroDeltaThreshold = 45000;
     constexpr int kMotionHitRequired = 4;
+    // CTRL2 range 0x20 is +/-8 g (4096 LSB/g); CTRL3 range 0x40 is
+    // +/-512 dps (64 LSB/dps). Axis direction still requires device-level
+    // calibration on the final mounting orientation.
+    constexpr float kAccelerationLsbPerG = 4096.0f;
+    constexpr float kGyroLsbPerDps = 64.0f;
+    TickType_t last_wake_tick = xTaskGetTickCount();
+    int64_t last_good_ms = 0, last_retry_ms = -3000, last_log_ms = 0;
+    unsigned samples = 0, missed = 0;
 
     while (true) {
-        if (Qmi8658Motion::ReadRaw(cur)) {
+        const int64_t clock_ms = esp_timer_get_time() / 1000;
+        if (!Qmi8658Motion::qmi_dev_ && clock_ms - last_retry_ms >= 3000) {
+            last_retry_ms = clock_ms;
+            for (uint8_t addr : {uint8_t(0x6a), uint8_t(0x6b)}) {
+                if (i2c_master_probe(board->i2c_bus_, addr, 20) == ESP_OK &&
+                    Qmi8658Motion::Initialize(board->i2c_bus_, addr) == ESP_OK) {
+                    last_good_ms = clock_ms;
+                    break;
+                }
+            }
+        }
+        if (Qmi8658Motion::qmi_dev_ && Qmi8658Motion::ReadRaw(cur)) {
+            last_good_ms = clock_ms; ++samples;
+            const int64_t now_ms = esp_timer_get_time() / 1000;
+            feature_car_feed_sample(cur.ax / kAccelerationLsbPerG,
+                                    cur.ay / kAccelerationLsbPerG,
+                                    cur.az / kAccelerationLsbPerG,
+                                    cur.gx / kGyroLsbPerDps,
+                                    cur.gy / kGyroLsbPerDps,
+                                    cur.gz / kGyroLsbPerDps,
+                                    now_ms);
             if (has_prev) {
                 int dx = abs(static_cast<int>(cur.ax) - static_cast<int>(prev.ax));
                 int dy = abs(static_cast<int>(cur.ay) - static_cast<int>(prev.ay));
@@ -790,14 +850,13 @@ void EspS3Cat::imu_event_task(void* arg)
                 int shake_score = dx + dy + dz;
                 int gyro_score = dgx + dgy + dgz;
 
-                const int64_t now_ms = esp_timer_get_time() / 1000;
                 if ((shake_score > kShakeDeltaThreshold) || (gyro_score > kGyroDeltaThreshold)) {
                     motion_hit_count++;
                     if (motion_hit_count >= kMotionHitRequired &&
                         (now_ms - last_shake_ms) > static_cast<int64_t>(board->SHAKE_COOLDOWN_MS)) {
                         last_shake_ms = now_ms;
                         motion_hit_count = 0;
-                        if (ui_bridge_is_on_home_page() && board->shake_enabled_) {
+                        if (!feature_car_is_enabled() && ui_bridge_is_on_home_page() && board->shake_enabled_) {
                             board->handle_violent_shake_event();
                         }
                     }
@@ -807,8 +866,22 @@ void EspS3Cat::imu_event_task(void* arg)
             }
             prev = cur;
             has_prev = true;
+        } else {
+            ++missed;
+            feature_car_mark_sensor_lost(clock_ms);
+            has_prev = false;
+            motion_hit_count = 0;
+            if (Qmi8658Motion::qmi_dev_ && clock_ms - last_good_ms > 1500) {
+                ESP_LOGW(TAG, "QMI data stalled; reconnecting");
+                Qmi8658Motion::Disconnect();
+            }
         }
-        vTaskDelay(pdMS_TO_TICKS(80));
+        if (clock_ms - last_log_ms >= 10000) {
+            ESP_LOGI(TAG, "IMU samples=%u missed=%u raw_a=(%d,%d,%d) status=%s", samples, missed,
+                     cur.ax, cur.ay, cur.az, feature_car_get_status());
+            last_log_ms = clock_ms; samples = missed = 0;
+        }
+        vTaskDelayUntil(&last_wake_tick, pdMS_TO_TICKS(20));
     }
 }
     // 处理剧烈甩动事件
@@ -851,21 +924,12 @@ void EspS3Cat::handle_violent_shake_event() {
 }
 void EspS3Cat::InitializeQmi8658()
 {
-    static constexpr uint8_t kQmi8658Addrs[] = {0x6A, 0x6B};
-    for (uint8_t addr : kQmi8658Addrs) {
-        if (i2c_master_probe(i2c_bus_, addr, 100) == ESP_OK) {
-            ESP_LOGI(TAG, "QMI8658A detected at I2C address 0x%02X", addr);
-            if (Qmi8658Motion::Initialize(i2c_bus_, addr) == ESP_OK) {
-                qmi8658_ready_ = true;
-                xTaskCreatePinnedToCore(imu_event_task, "qmi8658_evt", 3072, this, 3, &imu_task_handle_, 1);
-                ESP_LOGI(TAG, "QMI8658A motion task started");
-            } else {
-                ESP_LOGW(TAG, "QMI8658A init failed, shake disabled");
-            }
-            return;
-        }
+    // A single owner retries failed startup and later data stalls.
+    if (xTaskCreatePinnedToCore(imu_event_task, "qmi8658_evt", 4096, this, 3,
+                              &imu_task_handle_, 1) != pdPASS) {
+        ESP_LOGE(TAG, "QMI supervisor task creation failed");
+        feature_car_mark_sensor_lost(esp_timer_get_time()/1000);
     }
-    ESP_LOGW(TAG, "QMI8658A not found on I2C bus, shake disabled");
 }
 //初始化bq272220芯片(电量监控芯片)
 void EspS3Cat::Initializebq27220()
@@ -969,6 +1033,7 @@ EspS3Cat::EspS3Cat()
     audio_analysis_->Initialize();
 
     CyberVocTools::Initialize(this);
+    Application::GetInstance().Schedule([]() { feature_services_start(); });
 }
 
 AudioCodec* EspS3Cat::GetAudioCodec()

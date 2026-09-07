@@ -1,3 +1,4 @@
+#include "customer_ui/feature_ui.h"
 #include "audio_analysis.h"
 #include "audio_doa_app.h"
 #include "application.h"
@@ -168,6 +169,13 @@ void AudioAnalysis::SetMode(AudioAnalysisMode mode)
 
 void AudioAnalysis::OnAudioDataProcessed(const int16_t* audio_data, size_t bytes_per_channel, size_t channels)
 {
+    if (feature_car_is_enabled()) {
+        has_pending_angle_ = has_valid_angle_ = false;
+        has_sent_angle_ = true;
+        last_device_state_ = kDeviceStateIdle;
+        return;
+    }
+
     const char *current_page = ui_bridge_get_current_page();
     if (current_page == NULL || strcmp(current_page, "DUMMY") != 0) {
         return;

@@ -46,24 +46,35 @@ bool AfeWakeWord::Initialize(AudioCodec* codec, srmodel_list_t* models_list) {
         models_ = models_list;
     }
 
-    if (models_ == nullptr || models_->num == -1) {
+    if (models_ == nullptr || models_->num <= 0) {
         ESP_LOGE(TAG, "Failed to initialize wakenet model");
         return false;
     }
-    // for (int i = 0; i < models_->num; i++) {
-    for (int i = 0; i < 1; i++) {
+    wake_words_.clear();
+    wakenet_model_ = nullptr;
+    for (int i = 0; i < models_->num; i++) {
         ESP_LOGI(TAG, "Model %d: %s", i, models_->model_name[i]);
         if (strstr(models_->model_name[i], ESP_WN_PREFIX) != NULL) {
+#if CONFIG_BOARD_TYPE_CYBERVOC_V2_0
+            if (strcmp(models_->model_name[i], "wn9_xiaotexiaote_tts2") != 0) continue;
+#endif
             wakenet_model_ = models_->model_name[i];
             auto words = esp_srmodel_get_wake_words(models_, wakenet_model_);
+            if (!words) return false;
             // split by ";" to get all wake words
             std::stringstream ss(words);
             std::string word;
             while (std::getline(ss, word, ';')) {
                 wake_words_.push_back(word);
             }
+            break;
         }
     }
+    if (!wakenet_model_ || wake_words_.empty()) {
+        ESP_LOGE(TAG, "Required wake model missing; flash the matching model partition");
+        return false;
+    }
+    for (const auto& word : wake_words_) ESP_LOGI(TAG, "Active wake word: %s", word.c_str());
 
     std::string input_format;
     for (int i = 0; i < codec_->input_channels() - ref_num; i++) {
@@ -76,6 +87,9 @@ bool AfeWakeWord::Initialize(AudioCodec* codec, srmodel_list_t* models_list) {
     ESP_LOGI(TAG, "input_format: %s", input_format.c_str());
     
     afe_config_t* afe_config = afe_config_init(input_format.c_str(), models_, AFE_TYPE_SR, AFE_MODE_HIGH_PERF);
+    if (!afe_config) return false;
+    afe_config->wakenet_model_name = wakenet_model_;
+    afe_config->wakenet_model_name_2 = nullptr;
     afe_config->aec_init = codec_->input_reference();
     afe_config->aec_mode = AEC_MODE_SR_HIGH_PERF;
     afe_config->vad_mode = VAD_MODE_3;
@@ -86,15 +100,22 @@ bool AfeWakeWord::Initialize(AudioCodec* codec, srmodel_list_t* models_list) {
     afe_config->memory_alloc_mode = AFE_MEMORY_ALLOC_MORE_PSRAM;
     
     afe_iface_ = esp_afe_handle_from_config(afe_config);
+    if (!afe_iface_) { afe_config_free(afe_config); return false; }
     afe_data_ = afe_iface_->create_from_config(afe_config);
 
     afe_config_print(afe_config);
+    afe_config_free(afe_config);
+    if (!afe_data_) return false;
 
-    xTaskCreate([](void* arg) {
+    const auto task_created = xTaskCreate([](void* arg) {
         auto this_ = (AfeWakeWord*)arg;
         this_->AudioDetectionTask();
         vTaskDelete(NULL);
     }, "audio_detection", 4096, this, 3, nullptr);
+    if (task_created != pdPASS) {
+        afe_iface_->destroy(afe_data_); afe_data_ = nullptr;
+        return false;
+    }
 
     return true;
 }
@@ -147,7 +168,7 @@ void AfeWakeWord::AudioDetectionTask() {
 
         auto res = afe_iface_->fetch_with_delay(afe_data_, portMAX_DELAY);
         if (res == nullptr || res->ret_value == ESP_FAIL) {
-            printf("fetch_with_delay failed, ret_value: %d\n", res->ret_value);
+            printf("fetch_with_delay failed, ret_value: %d\n", res ? res->ret_value : ESP_FAIL);
             continue;;
         }
 
@@ -170,8 +191,12 @@ void AfeWakeWord::AudioDetectionTask() {
         StoreWakeWordData(res->data, res->data_size / sizeof(int16_t));
 
         if (res->wakeup_state == WAKENET_DETECTED) {
+            if (res->wake_word_index < 1 || static_cast<size_t>(res->wake_word_index) > wake_words_.size()) {
+                ESP_LOGE(TAG, "Invalid wake word index %d", res->wake_word_index);
+                continue;
+            }
             Stop();
-            last_detected_wake_word_ = wake_words_[res->wakenet_model_index - 1];
+            last_detected_wake_word_ = wake_words_[res->wake_word_index - 1];
 
             if (wake_word_detected_callback_) {
                 wake_word_detected_callback_(last_detected_wake_word_);

@@ -2,11 +2,12 @@
 #include "board.h"
 #include "wifi_board.h"
 #include "display/emote_display.h"
-#include "customer_ui/alarm_api.h"
+#include "customer_ui/feature_ui.h"
 #include "application.h"
 #include <esp_log.h>
 #include <lvgl.h>
 #include <esp_lv_adapter.h>
+#include <atomic>
 
 #include <wifi_station.h>
 
@@ -130,11 +131,12 @@ typedef struct ui_bridge_page_node
 } ui_bridge_page_node_t;
 
 static ui_bridge_page_node_t *s_page_list = NULL; /* Linked list head */
-static const char *s_current_page = NULL;
+static std::atomic<const char*> s_current_page{nullptr};
 static ui_bridge_page_switch_cb_t s_page_switch_cb = NULL;
 static void *s_page_switch_user_data = NULL;
-static uint32_t s_ignore_click_until_tick = 0;
-static uint32_t s_suppress_interactions_until_tick = 0;
+static std::atomic<uint32_t> s_ignore_click_until_tick{0};
+static std::atomic<uint32_t> s_suppress_interactions_until_tick{0};
+static bool s_pointer_cancelled = false;
 
 /* Base emote UI container */
 static lv_obj_t *s_base_container = NULL;
@@ -171,6 +173,27 @@ static bool ui_bridge_should_ignore_click(void)
     }
     s_ignore_click_until_tick = 0;
     return false;
+}
+
+void ui_bridge_track_pointer(void)
+{
+    auto* input = lv_indev_get_act();
+    if (!input) return;
+    lv_point_t point; lv_indev_get_point(input, &point);
+    if (LV_ABS(point.x - s_gesture_state.start_x) > 14 ||
+        LV_ABS(point.y - s_gesture_state.start_y) > 14) s_pointer_cancelled = true;
+}
+
+bool ui_bridge_click_allowed(void)
+{
+    ui_bridge_track_pointer();
+    return !s_pointer_cancelled && !ui_bridge_should_ignore_click();
+}
+
+void ui_bridge_cancel_pointer(void)
+{
+    s_pointer_cancelled = true;
+    s_gesture_state.handled = true;
 }
 
 void ui_bridge_suppress_interactions(uint32_t duration_ms)
@@ -311,6 +334,7 @@ static void ui_bridge_gesture_event_cb(lv_event_t *e)
     switch (code)
     {
     case LV_EVENT_PRESSED:
+        s_pointer_cancelled = false;
         if (indev)
         {
             lv_point_t p;
@@ -410,6 +434,12 @@ static void ui_bridge_gesture_event_cb(lv_event_t *e)
     case LV_EVENT_RELEASED:
     case LV_EVENT_PRESS_LOST:
     {
+        ui_bridge_track_pointer();
+        if (code == LV_EVENT_PRESS_LOST) {
+            ui_bridge_cancel_pointer();
+            state->active = false;
+            break;
+        }
         if (!state->active || !indev)
         {
             state->active = false;
@@ -504,7 +534,7 @@ static void ui_bridge_gesture_event_cb(lv_event_t *e)
                 }
                 ESP_LOGI(TAG, "press detected: %d (duration: %lu ms)", gesture, press_duration);
 
-                if (gesture == UI_BRIDGE_GESTURE_SHORT_PRESS && !ui_bridge_should_ignore_click())
+                if (gesture == UI_BRIDGE_GESTURE_SHORT_PRESS && ui_bridge_click_allowed())
                 {
                     // Aggregate taps into single/double sequences.
                     const uint32_t now = lv_tick_get();
@@ -570,6 +600,32 @@ static void ui_bridge_refresh_emote_display(void)
 /* Internal function to handle gesture-based page navigation */
 static void ui_bridge_handle_gesture_navigation(ui_bridge_gesture_type_t gesture_type)
 {
+    // The feature menu is an overlay-style entry point rather than another
+    // member of the legacy horizontal page cycle.
+    if (gesture_type == UI_BRIDGE_GESTURE_SWIPE_DOWN && ui_bridge_is_on_home_page())
+    {
+        ui_bridge_suppress_interactions(600);
+        Application::GetInstance().Schedule([]() { feature_ui_open_menu(); });
+        return;
+    }
+    if (gesture_type == UI_BRIDGE_GESTURE_SWIPE_UP &&
+        feature_ui_is_feature_page(ui_bridge_get_current_page()))
+    {
+        ui_bridge_suppress_interactions(600);
+        Application::GetInstance().Schedule([]() {
+            const char *page = ui_bridge_get_current_page();
+            if (page != NULL && strcmp(page, PAGE_RING_MENU) != 0)
+            {
+                feature_ui_open_menu();
+            }
+            else
+            {
+                feature_ui_close_to_home();
+            }
+        });
+        return;
+    }
+
     /* Map gesture to page direction */
     int direction = 0;
     const char *gesture_name = NULL;
@@ -732,8 +788,8 @@ void ui_bridge_init(Display *display)
     ui_bridge_switch_page(UI_BRIDGE_PAGE_HOME); /* Set as default page */
     lv_obj_add_event_cb(s_base_container, ui_bridge_base_container_event_cb, LV_EVENT_ALL, NULL);
 
-    /* Create main UI (which will register its own pages) */
-    alarm_create_ui();
+    /* Register the independent timer, car-mode menu and settings pages. */
+    feature_ui_create();
 
     ESP_LOGI(TAG, "LVGL display bridge initialized for %dx%d", DISPLAY_WIDTH, DISPLAY_HEIGHT);
 }

@@ -11,6 +11,7 @@
 #include "audio_analysis.h"
 #include "touch_sensor.h"
 #include <functional>
+#include <atomic>
 #include "bq27220/bq27220.h"//电量监控芯片
 
 class EspS3Cat : public DualNetworkBoard {
@@ -58,8 +59,8 @@ private:
     BaseControl* base_control_;
     AudioAnalysis* audio_analysis_;
     TouchSensor* touch_sensor_ = nullptr;
-    bool head_touch_enabled_ = false;
-    bool shake_enabled_ = false;
+    std::atomic<bool> head_touch_enabled_{false};
+    std::atomic<bool> shake_enabled_{false};
 
     i2c_bus_handle_t i2c_bus = NULL; // bq27220 uses this
     TaskHandle_t imu_task_handle_ = nullptr;

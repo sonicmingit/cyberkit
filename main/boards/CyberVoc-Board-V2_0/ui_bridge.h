@@ -32,6 +32,10 @@ class Display;
 extern "C" {
 #endif
 
+bool ui_bridge_click_allowed(void);
+void ui_bridge_track_pointer(void);
+void ui_bridge_cancel_pointer(void);
+
 /**
  * @brief Gesture event types
  */

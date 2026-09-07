@@ -84,6 +84,9 @@ public:
     // Anim dialog methods
     bool StopAnimDialog();
     bool InsertAnimDialog(const char* emoji_name, uint32_t duration_ms);
+    // Dedicated full-face, low-priority car display; never drives the base.
+    bool ShowCarEmotion(const char* emoji_name);
+    void StopCarEmotion();
 
     EmoteEngine* GetEngine() const;
     void* GetEngineHandle() const;
@@ -111,7 +114,8 @@ private:
     virtual bool Lock(int timeout_ms = 0) override;
     virtual void Unlock() override;
     //交替警告
-    bool btr_level;
+    bool btr_level = false;
+    int64_t car_block_until_us_ = 0;
 
     std::unique_ptr<EmoteEngine> engine_;
 

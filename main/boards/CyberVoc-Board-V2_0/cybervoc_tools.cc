@@ -6,7 +6,7 @@
 #include "board.h"
 #include "assets/lang_config.h"
 #include <esp_log.h>
-#include "customer_ui/alarm_api.h"
+#include "customer_ui/feature_ui.h"
 
 #define TAG "CyberVocTools"
 
@@ -103,76 +103,56 @@ void CyberVocTools::Initialize(EspS3Cat* board)
         return true;
     });
 
-    // Pomodoro timer control
-    mcp_server.AddTool("self.pomodoro.start", "开启番茄钟定时器，设置倒计时时间（1-60分钟，默认5分钟）",
+    mcp_server.AddTool("self.timer.start", "启动通用倒计时器（1-1440 分钟）。计时离开页面后继续运行。",
     PropertyList({
-        Property("minutes", kPropertyTypeInteger, 5, 1, 60),
+        Property("minutes", kPropertyTypeInteger, 5, 1, 1440),
     }), [](const PropertyList& properties) -> ReturnValue {
         int minutes = properties["minutes"].value<int>();
-        ESP_LOGI(TAG, "Starting pomodoro timer with %d minutes", minutes);
-        alarm_start_pomodoro(minutes);
-        return true;
+        return feature_timer_start_minutes(minutes);
     });
 
-    // Pomodoro timer control (start/pause)
-    mcp_server.AddTool("self.pomodoro.control", "控制番茄钟定时器的运行状态。参数：start-启动定时器，pause-暂停定时器",
+    mcp_server.AddTool("self.timer.control", "控制通用倒计时器：pause、resume 或 cancel。",
     PropertyList({
         Property("action", kPropertyTypeString),
     }), [](const PropertyList& properties) -> ReturnValue {
         const std::string &action = properties["action"].value<std::string>();
-        
-        bool success = false;
-        if (action == "start") {
-            ESP_LOGI(TAG, "Starting pomodoro timer");
-            success = alarm_resume_pomodoro();
-        } else if (action == "pause") {
-            ESP_LOGI(TAG, "Pausing pomodoro timer");
-            success = alarm_pause_pomodoro();
-        } else {
-            ESP_LOGE(TAG, "Unknown pomodoro action: %s (expected 'start' or 'pause')", action.c_str());
-            return false;
-        }
-        return success;
+        if (action == "pause") return feature_timer_pause();
+        if (action == "resume") return feature_timer_resume();
+        if (action == "cancel") return feature_timer_cancel();
+        ESP_LOGE(TAG, "Unknown timer action: %s", action.c_str());
+        return false;
     });
 
-    // Sleep timer control
-    mcp_server.AddTool("self.sleep.start", "设置睡眠闹钟，从当前时间到指定结束时间（24小时制）。开始时间自动为当前时间。参数：end_hour-结束时间的小时（0-23，默认8），end_min-结束时间的分钟（0-59，默认0）",
-    PropertyList({
-        Property("end_hour", kPropertyTypeInteger, 8, 0, 23),
-        Property("end_min", kPropertyTypeInteger, 0, 0, 59),
-    }), [](const PropertyList& properties) -> ReturnValue {
-        int end_hour = properties["end_hour"].value<int>();
-        int end_min = properties["end_min"].value<int>();
-        
-        // Validate parameters
-        if (end_hour < 0 || end_hour >= 24) {
-            ESP_LOGE(TAG, "Invalid end_hour: %d (must be 0-23)", end_hour);
-            return false;
+    mcp_server.AddTool("self.timer.status", "查询通用倒计时器状态和剩余秒数。",
+    PropertyList(std::vector<Property>{}), [](const PropertyList&) -> ReturnValue {
+        const char* state = "idle";
+        switch (feature_timer_get_state()) {
+            case FEATURE_TIMER_RUNNING: state = "running"; break;
+            case FEATURE_TIMER_PAUSED: state = "paused"; break;
+            case FEATURE_TIMER_FINISHED: state = "finished"; break;
+            default: break;
         }
-        if (end_min < 0 || end_min >= 60) {
-            ESP_LOGE(TAG, "Invalid end_min: %d (must be 0-59)", end_min);
-            return false;
-        }
-        
-        ESP_LOGI(TAG, "Setting sleep timer: current time -> %02d:%02d", end_hour, end_min);
-        if(!alarm_start_sleep(end_hour, end_min))
-        {
-            return false;
-        }
+        return std::string("state=") + state +
+               ", remaining_seconds=" + std::to_string(feature_timer_get_remaining_seconds());
+    });
+
+    mcp_server.AddTool("self.car_mode.set_enabled", "开启或关闭车载显示模式。该模式仅改变屏幕，不驱动底座。",
+    PropertyList({Property("enabled", kPropertyTypeBoolean, false)}),
+    [](const PropertyList& properties) -> ReturnValue {
+        return feature_car_set_enabled(properties["enabled"].value<bool>());
+    });
+
+    mcp_server.AddTool("self.car_mode.recalibrate", "重新开始车载模式 IMU 静止校准。设备需固定静止至少两秒。",
+    PropertyList(std::vector<Property>{}), [](const PropertyList&) -> ReturnValue {
+        if (!feature_car_is_enabled()) return false;
+        feature_car_recalibrate();
         return true;
     });
-    mcp_server.AddTool("self.sleep.delete_clock", "用户明确要求删除睡眠闹钟时使用该工具",
-        PropertyList({Property("delete", kPropertyTypeBoolean, true)}),[](const PropertyList& properties) -> ReturnValue 
-        {
-            
-            if(alarm_delete_sleep())
-            {
-                return true;
-            }
-            else
-            {
-                return false;
-            }
-        }
-    );
+
+    mcp_server.AddTool("self.car_mode.status", "查询车载模式启用、校准和当前运动事件状态。",
+    PropertyList(std::vector<Property>{}), [](const PropertyList&) -> ReturnValue {
+        return std::string("enabled=") + (feature_car_is_enabled() ? "true" : "false") +
+               ", calibrated=" + (feature_car_is_calibrated() ? "true" : "false") +
+               ", event=" + feature_car_get_event_name();
+    });
 }

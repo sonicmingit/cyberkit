@@ -665,6 +665,7 @@ namespace emote
 
     void EmoteDisplay::SetStatus(const char *const status)
     {
+        StopCarEmotion();
         if (!status)
         {
             ESP_LOGE(TAG, "SetStatus: status is nullptr");
@@ -712,6 +713,11 @@ namespace emote
 
     void EmoteDisplay::ShowNotification(const char *notification, int duration_ms)
     {
+        {
+            DisplayLockGuard lock(this);
+            car_block_until_us_ = esp_timer_get_time() + static_cast<int64_t>(duration_ms) * 1000;
+            StopCarEmotion();
+        }
         if (!notification || !engine_)
         {
             return;
@@ -1330,6 +1336,25 @@ namespace emote
         gfx_emote_unlock(engine_handle);
 
         return true;
+    }
+
+    bool EmoteDisplay::ShowCarEmotion(const char* name)
+    {
+        if (!engine_ || !name || std::strncmp(name, "car_", 4) != 0) return false;
+        DisplayLockGuard lock(this);
+        const auto current = engine_->GetCurrentDialogEmoji();
+        if ((!current.empty() && current.compare(0, 4, "car_") != 0) ||
+            (low_battery_popup_ && gfx_obj_get_visible(low_battery_popup_)) ||
+            esp_timer_get_time() < car_block_until_us_) return false;
+        if (current == name) return true; // Do not restart an unchanged animation.
+        return engine_->SetDialogAnim(name, this);
+    }
+
+    void EmoteDisplay::StopCarEmotion()
+    {
+        if (!engine_) return;
+        DisplayLockGuard lock(this);
+        if (engine_->GetCurrentDialogEmoji().compare(0, 4, "car_") == 0) StopAnimDialog();
     }
 
     void EmoteDisplay::RefreshAll()
