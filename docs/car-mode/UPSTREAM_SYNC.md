@@ -1,0 +1,23 @@
+# 上游同步与提交策略
+
+## 远程仓库
+
+- `origin`：个人 fork，`https://github.com/sonicmingit/cyberkit.git`
+- `upstream`：官方仓库，`https://github.com/cyberai8/cyberkit.git`
+
+## 分支策略
+
+- `main`：保持可发布，并定期同步 `upstream/main`。
+- `feature/car-mode`：车载模式持续开发分支。
+- 高风险或独立功能可从车载分支建立短生命周期子分支。
+
+## 同步步骤
+
+1. `git fetch upstream --prune`
+2. 检查 `main...upstream/main` 的提交差异。
+3. 在干净工作区将官方更新合入本地 `main`。
+4. 编译并执行基础回归后推送 `origin/main`。
+5. 将更新后的 `main` 合入 `feature/car-mode`，解决冲突并执行车载模式回归。
+6. 在 `ITERATION_LOG.md` 记录上游提交、合并方式、冲突和验证结果。
+
+默认保留官方提交历史，不对已经共享的分支进行强制推送。上游更新不会在存在未提交修改时直接合并。
