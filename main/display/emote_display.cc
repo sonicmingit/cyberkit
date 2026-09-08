@@ -118,6 +118,20 @@ namespace emote
     static gfx_obj_t *g_obj_charge = nullptr;
     // 低电量提醒
     static gfx_obj_t *low_battery_popup_ = nullptr;
+
+    struct CarChromeSnapshot
+    {
+        bool active = false;
+        bool toast = false;
+        bool clock = false;
+        bool eye = false;
+        bool listen = false;
+        bool status = false;
+        bool battery = false;
+        bool battery_number = false;
+        bool charge = false;
+    };
+    static CarChromeSnapshot g_car_chrome;
     // ============================================================================
     // Forward Declarations
     // ============================================================================
@@ -131,6 +145,49 @@ namespace emote
         SHOW_TIME = 2,      // Show g_obj_label_clock
         SHOW_TIPS = 3       // Show g_obj_label_toast
     };
+
+    static bool IsVisible(gfx_obj_t *object)
+    {
+        return object && gfx_obj_get_visible(object);
+    }
+
+    static void SetVisible(gfx_obj_t *object, bool visible)
+    {
+        if (object) gfx_obj_set_visible(object, visible);
+    }
+
+    static void HideChromeForCarEmotion()
+    {
+        if (g_car_chrome.active) return;
+        g_car_chrome = {
+            true,
+            IsVisible(g_obj_label_toast), IsVisible(g_obj_label_clock), IsVisible(g_obj_anim_eye),
+            IsVisible(g_obj_anim_listen), IsVisible(g_obj_img_status), IsVisible(g_obj_battery),
+            IsVisible(g_obj_battery_number), IsVisible(g_obj_charge)
+        };
+        SetVisible(g_obj_label_toast, false);
+        SetVisible(g_obj_label_clock, false);
+        SetVisible(g_obj_anim_eye, false);
+        SetVisible(g_obj_anim_listen, false);
+        SetVisible(g_obj_img_status, false);
+        SetVisible(g_obj_battery, false);
+        SetVisible(g_obj_battery_number, false);
+        SetVisible(g_obj_charge, false);
+    }
+
+    static void RestoreChromeAfterCarEmotion()
+    {
+        if (!g_car_chrome.active) return;
+        SetVisible(g_obj_label_toast, g_car_chrome.toast);
+        SetVisible(g_obj_label_clock, g_car_chrome.clock);
+        SetVisible(g_obj_anim_eye, g_car_chrome.eye);
+        SetVisible(g_obj_anim_listen, g_car_chrome.listen);
+        SetVisible(g_obj_img_status, g_car_chrome.status);
+        SetVisible(g_obj_battery, g_car_chrome.battery);
+        SetVisible(g_obj_battery_number, g_car_chrome.battery_number);
+        SetVisible(g_obj_charge, g_car_chrome.charge);
+        g_car_chrome.active = false;
+    }
 
     // ============================================================================
     // Helper Functions
@@ -630,7 +687,8 @@ namespace emote
             return;
         }
         
-        if (!gfx_obj_get_visible(g_obj_anim_eye))
+        const bool car_active = engine_->GetCurrentDialogEmoji().compare(0, 4, "car_") == 0;
+        if (!car_active && !gfx_obj_get_visible(g_obj_anim_eye))
         {
             gfx_obj_set_visible(g_obj_anim_eye, true);
         }
@@ -665,7 +723,6 @@ namespace emote
 
     void EmoteDisplay::SetStatus(const char *const status)
     {
-        StopCarEmotion();
         if (!status)
         {
             ESP_LOGE(TAG, "SetStatus: status is nullptr");
@@ -676,6 +733,15 @@ namespace emote
         {
             return;
         }
+
+        // Idle status refreshes are frequent. Keeping the car dialog alive here
+        // prevents a one-frame return to the desktop between two motion events.
+        if (std::strcmp(status, Lang::Strings::STANDBY) == 0 &&
+            engine_->GetCurrentDialogEmoji().compare(0, 4, "car_") == 0)
+        {
+            return;
+        }
+        StopCarEmotion();
 
         DisplayLockGuard lock(this);
 
@@ -866,6 +932,16 @@ namespace emote
         // Only display time when battery icon is shown
         DisplayLockGuard lock(this);
         auto &app = Application::GetInstance();
+
+        if (engine_->GetCurrentDialogEmoji().compare(0, 4, "car_") == 0)
+        {
+            // Keep the cached gauge value fresh for the information page while
+            // deliberately leaving every status-bar object hidden.
+            int level = 0;
+            bool charging = false, discharging = false;
+            board.GetBatteryLevel(level, charging, discharging);
+            return;
+        }
 
         if (app.GetDeviceState() == kDeviceStateIdle)
         {
@@ -1249,6 +1325,7 @@ namespace emote
             return false;
         }
 
+        const bool was_car = engine_->GetCurrentDialogEmoji().compare(0, 4, "car_") == 0;
         gfx_emote_lock(engine_handle);
 
         // Stop and delete timer if exists
@@ -1264,7 +1341,7 @@ namespace emote
             gfx_obj_set_visible(g_obj_anim_emerg_dlg, false);
         }
 
-        if (g_obj_anim_eye)
+        if (g_obj_anim_eye && !was_car)
         {
             gfx_obj_set_visible(g_obj_anim_eye, true);
         }
@@ -1273,6 +1350,8 @@ namespace emote
         engine_->ClearCurrentDialogEmoji();
 
         gfx_emote_unlock(engine_handle);
+
+        if (was_car) RestoreChromeAfterCarEmotion();
 
         return true;
     }
@@ -1347,7 +1426,11 @@ namespace emote
             (low_battery_popup_ && gfx_obj_get_visible(low_battery_popup_)) ||
             esp_timer_get_time() < car_block_until_us_) return false;
         if (current == name) return true; // Do not restart an unchanged animation.
-        return engine_->SetDialogAnim(name, this);
+        const bool entering = current.compare(0, 4, "car_") != 0;
+        if (entering) HideChromeForCarEmotion();
+        const bool shown = engine_->SetDialogAnim(name, this);
+        if (!shown && entering) RestoreChromeAfterCarEmotion();
+        return shown;
     }
 
     void EmoteDisplay::StopCarEmotion()

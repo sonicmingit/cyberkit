@@ -91,17 +91,20 @@ void Press(int x, int y) {
     s_ignore_click_until_tick = 0; menu_actions = long_actions = 0; Event(LV_EVENT_PRESSED);
 }
 int main() {
-    Press(180,50); current_point = {200,50}; Event(LV_EVENT_PRESSING); current_point = {180,50}; Event(LV_EVENT_CLICKED);
+    // The Figma ring has deliberate gaps at 0/60/... degrees. Exercise the
+    // centre of the top-right segment (30 degrees) rather than the top gap.
+    Press(245,67); current_point = {265,67}; Event(LV_EVENT_PRESSING); current_point = {245,67}; Event(LV_EVENT_CLICKED);
     Check("drag out and back must not click", menu_actions == 0);
-    Press(180,50); current_point = {184,53}; Event(LV_EVENT_CLICKED);
+    Press(245,67); current_point = {249,70}; Event(LV_EVENT_CLICKED);
     Check("tap tolerates normal jitter", menu_actions == 1);
-    Press(180,50); Event(LV_EVENT_LONG_PRESSED); Event(LV_EVENT_CLICKED);
+    Press(245,67); Event(LV_EVENT_LONG_PRESSED); Event(LV_EVENT_CLICKED);
     Check("long press executes once, without toggle", menu_actions == 1 && long_actions == 1);
-    Press(180,50); Event(LV_EVENT_PRESS_LOST); Event(LV_EVENT_CLICKED);
+    Press(245,67); Event(LV_EVENT_PRESS_LOST); Event(LV_EVENT_CLICKED);
     Check("lost press cancels action", menu_actions == 0);
-    Press(180,50); s_ignore_click_until_tick = 1200; Event(LV_EVENT_CLICKED);
+    Press(245,67); s_ignore_click_until_tick = 1200; Event(LV_EVENT_CLICKED);
     Check("page gesture suppression guards menu", menu_actions == 0);
-    Check("center and outside circle are not items", HitMenuItem(180,180) == -1 && HitMenuItem(0,0) == -1);
+    Check("center, top gap and outside circle are not items",
+          HitMenuItem(180,180) == -1 && HitMenuItem(180,50) == -1 && HitMenuItem(0,0) == -1);
     Check("duration limits", !feature_timer_start_minutes(0) && !feature_timer_start_minutes(1441));
     feature_timer_start_minutes(1); fake_now = 60000000; feature_timer_poll(); feature_timer_cancel();
     Application::GetInstance().Drain(); Check("cancel invalidates queued alarm", sounds == 0);

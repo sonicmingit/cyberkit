@@ -1,31 +1,31 @@
 [
   {
-    "source": "TITA_大眼仔\\车载模式转换\\eaf\\tita_cruise.eaf",
+    "source": "001-TITA大眼仔-v1\\eaf\\car_cruise.eaf",
     "file": "tita_cruise.eaf",
     "sha256": "e2679886291d8ea08e38bfa880a8a7ed0fbbcd41f70dfd8b7a1f67a3cad661c8"
   },
   {
-    "source": "TITA_大眼仔\\车载模式转换\\eaf\\tita_wait.eaf",
+    "source": "001-TITA大眼仔-v1\\eaf\\car_wait.eaf",
     "file": "tita_wait.eaf",
     "sha256": "61efaebdc7b0b0bcd93cae0c22144b12b7663be8eca35fdeb0f0c8ac82294959"
   },
   {
-    "source": "TITA_大眼仔\\车载模式转换\\eaf\\tita_turn_left.eaf",
+    "source": "001-TITA大眼仔-v1\\eaf\\car_turn_left.eaf",
     "file": "tita_turn_left.eaf",
     "sha256": "e603bd14e9dff02968241920dfb6a1191f07674eae6bb5970657290c5013ce1f"
   },
   {
-    "source": "TITA_大眼仔\\车载模式转换\\eaf\\tita_turn_right.eaf",
+    "source": "001-TITA大眼仔-v1\\eaf\\car_turn_right.eaf",
     "file": "tita_turn_right.eaf",
     "sha256": "e39207ae39e6c0e58490386e30fb5647b21146d75fd81d57a1dbe7f1ebc061dd"
   },
   {
-    "source": "TITA_大眼仔\\车载模式转换\\eaf\\tita_bump.eaf",
+    "source": "001-TITA大眼仔-v1\\eaf\\car_bump.eaf",
     "file": "tita_bump.eaf",
     "sha256": "9bfe60ebba032a5e1d98d9037e39f2b69a2af34587a22273de3272a8ecffd7e3"
   },
   {
-    "source": "TITA_大眼仔\\车载模式转换\\eaf\\tita_signal_lost.eaf",
+    "source": "001-TITA大眼仔-v1\\eaf\\car_signal_lost.eaf",
     "file": "tita_signal_lost.eaf",
     "sha256": "e1397d626adfb23e5a155f97e6497432cf8b32bde3662200f8c2c8fd86ff8e56"
   }

@@ -12,6 +12,7 @@
 #include "touch_sensor.h"
 #include <functional>
 #include <atomic>
+#include <mutex>
 #include "bq27220/bq27220.h"//电量监控芯片
 
 class EspS3Cat : public DualNetworkBoard {
@@ -38,6 +39,7 @@ public:
         return base_control_;
     }
     bool GetBatteryLevel(int &level, bool& charging, bool& discharging);
+    bool GetCachedBatteryLevel(int& level, bool& charging, bool& discharging) const;
     virtual TouchSensor* GetTouchSensor() override
     {
         return touch_sensor_;
@@ -69,6 +71,10 @@ private:
     const uint32_t SHAKE_COOLDOWN_MS = 10000; // match esp-vocat cooldown
 
     bq27220_handle_t bq27220 = NULL;
+    mutable std::mutex battery_mutex_;
+    std::atomic<int> cached_battery_level_{-1};
+    std::atomic<bool> cached_battery_charging_{false};
+    std::atomic<bool> cached_battery_discharging_{false};
     TaskHandle_t power_key_task_handle_ = nullptr;
     TaskHandle_t head_touch_task_handle_ = nullptr;
 

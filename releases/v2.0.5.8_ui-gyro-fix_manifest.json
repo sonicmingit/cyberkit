@@ -1,0 +1,79 @@
+{
+  "version": "2.0.5.8",
+  "board": "CyberVoc-Board-V2_0",
+  "idf": "5.5.2",
+  "branch": "feature/car-mode",
+  "head": "caddbae",
+  "source_state": "uncommitted workspace",
+  "source_files_compared": 264,
+  "hardware_verified": false,
+  "images": {
+    "ota_0": {
+      "bytes": 4536368,
+      "capacity": 6144000,
+      "sha256": "9e884398913fa12ed9da024f4b4f7e3a4a5836ce0d752481e41b443834ee28b2"
+    },
+    "assets": {
+      "bytes": 5351115,
+      "capacity": 5632000,
+      "sha256": "bffb70686d5274d70fc0813a63ddcc2b0c4d14a3379da34b50325d71d519287f"
+    },
+    "model": {
+      "bytes": 291070,
+      "capacity": 307200,
+      "sha256": "8c2834407769e709019c712db445166847231ba013f1b4fe0632852ddbfdeee8"
+    },
+    "resource_check": {
+      "files": 42,
+      "car_emotions": 18,
+      "validated_frames": 83
+    },
+    "CyberVoc-Board-V2_0.bin.xz.packed": {
+      "bytes": 2399744,
+      "capacity": 3072000
+    }
+  },
+  "files": {
+    "bootloader/bootloader.bin": {
+      "bytes": 24832,
+      "sha256": "713e17cc052ec3bbfa142cd51dfbd8babfacc3bd57f67915ed9c75aec5e24ca6"
+    },
+    "CyberVoc-Board-V2_0.bin": {
+      "bytes": 4536368,
+      "sha256": "9e884398913fa12ed9da024f4b4f7e3a4a5836ce0d752481e41b443834ee28b2"
+    },
+    "partition_table/partition-table.bin": {
+      "bytes": 3072,
+      "sha256": "0dcfdeb6252a7911f4dbbd061db249e98c8a55806557f772c81a3a20e20eec59"
+    },
+    "ota_data_initial.bin": {
+      "bytes": 8192,
+      "sha256": "7d2c7ac4888bfd75cd5f56e8d61f69595121183afc81556c876732fd3782c62f"
+    },
+    "srmodels/srmodels.bin": {
+      "bytes": 291070,
+      "sha256": "8c2834407769e709019c712db445166847231ba013f1b4fe0632852ddbfdeee8"
+    },
+    "expression_assets.bin": {
+      "bytes": 5351115,
+      "sha256": "bffb70686d5274d70fc0813a63ddcc2b0c4d14a3379da34b50325d71d519287f"
+    },
+    "merged-binary.bin": {
+      "bytes": 15286526,
+      "sha256": "0e44604fc55e483281b65764439cb4e02723523958e9ad3511c02c8d0646891f"
+    },
+    "custom_ota_binaries/CyberVoc-Board-V2_0.bin.xz.packed": {
+      "bytes": 2399744,
+      "sha256": "ea53111a55ec4b2e8e1a5b9db7813038ab0467e5e8b3f03f2259270d8c13ad14"
+    },
+    "flash_args": {
+      "bytes": 256,
+      "sha256": "30146787d9b4232f790fb74bf514112e85a61502f51cffc752fdce4e1520bb63"
+    },
+    "flasher_args.json": {
+      "bytes": 1394,
+      "sha256": "65b4e0e7d5bedc6ee6af87b96a84a64e870fbe6b8eb675ae59f0b59b200c3286"
+    }
+  }
+}
+

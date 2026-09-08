@@ -1,0 +1,11 @@
+[
+  {"source":"004-默认表情-v1\\eaf\\car_cruise.eaf","file":"car_cruise.eaf","sha256":"6ebb9bed4ef5983f6f159e7b171a3e669add9f6cb26f68be2292928c45f3aa61"},
+  {"source":"004-默认表情-v1\\eaf\\car_wait.eaf","file":"car_wait.eaf","sha256":"839f09515c2ca16426d185a73212057574c8506d0d2666485dbebdc05a782816"},
+  {"source":"004-默认表情-v1\\eaf\\car_accelerate.eaf","file":"car_accelerate.eaf","sha256":"219f98d7dd74d71935f85a655f8e7e327b8d1e900d8ace466cba85e65ed1e964"},
+  {"source":"004-默认表情-v1\\eaf\\car_decelerate.eaf","file":"car_decelerate.eaf","sha256":"2c17ef23c20b700c4bf68600345ff1632e3d868b3d416a8d23cc6934bcce58a1"},
+  {"source":"004-默认表情-v1\\eaf\\car_hard_brake.eaf","file":"car_hard_brake.eaf","sha256":"9dffcfa7f539b767856f6da337296a57b56762afc8cc8263a294730726023072"},
+  {"source":"004-默认表情-v1\\eaf\\car_bump.eaf","file":"car_bump.eaf","sha256":"ef0ea1458cece9d330071f4fadbe01456d90ce44556699609dec54ef36e6b47c"},
+  {"source":"004-默认表情-v1\\eaf\\car_turn_left.eaf","file":"car_turn_left.eaf","sha256":"be4c7ee1593278ce03dcd3093cde0280453a43c7941f779e60e363088f91995b"},
+  {"source":"004-默认表情-v1\\eaf\\car_turn_right.eaf","file":"car_turn_right.eaf","sha256":"7e8a1d00a61517ba4f516e67dd09486b195a2ce2f0204eaf8abaf8a26564e92f"},
+  {"source":"004-默认表情-v1\\eaf\\car_signal_lost.eaf","file":"car_signal_lost.eaf","sha256":"ffb420272c0da9a384470de23d85fc9fbf86907260a52d92cdd224ca4d371daa"}
+]

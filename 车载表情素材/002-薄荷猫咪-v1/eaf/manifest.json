@@ -1,0 +1,290 @@
+[
+  {
+    "source": "car_wake.gif",
+    "output": "car_wake.eaf",
+    "width": 360,
+    "height": 360,
+    "frames": 4,
+    "duration_ms": [
+      60,
+      60,
+      60,
+      60
+    ],
+    "size_bytes": 60082,
+    "sha256": "1e3448f973588b2d47590df47f7700b3e3b1675cb1e283f87fee1c4b93f87db8",
+    "encoding": "EAF 8-bit indexed BGRA palette + RLE, 12x30-row blocks",
+    "state": "car_wake",
+    "loop_recommended": false
+  },
+  {
+    "source": "car_move_off.gif",
+    "output": "car_move_off.eaf",
+    "width": 360,
+    "height": 360,
+    "frames": 4,
+    "duration_ms": [
+      60,
+      60,
+      60,
+      60
+    ],
+    "size_bytes": 64314,
+    "sha256": "55ac30515610035f8072248fb6afc807150a83f325fb9d8f4303a4a106a96426",
+    "encoding": "EAF 8-bit indexed BGRA palette + RLE, 12x30-row blocks",
+    "state": "car_move_off",
+    "loop_recommended": false
+  },
+  {
+    "source": "car_accelerate.gif",
+    "output": "car_accelerate.eaf",
+    "width": 360,
+    "height": 360,
+    "frames": 4,
+    "duration_ms": [
+      60,
+      60,
+      60,
+      60
+    ],
+    "size_bytes": 72668,
+    "sha256": "a7917ee001e507c4d1eda9d6da573a683f155e04477e1bf41eb7700f63b4c7fe",
+    "encoding": "EAF 8-bit indexed BGRA palette + RLE, 12x30-row blocks",
+    "state": "car_accelerate",
+    "loop_recommended": false
+  },
+  {
+    "source": "car_cruise.gif",
+    "output": "car_cruise.eaf",
+    "width": 360,
+    "height": 360,
+    "frames": 4,
+    "duration_ms": [
+      60,
+      60,
+      60,
+      60
+    ],
+    "size_bytes": 63708,
+    "sha256": "e72bc847685b536b6ca4135ff1adeb966b1fb0c87638282965c9730ce892cb70",
+    "encoding": "EAF 8-bit indexed BGRA palette + RLE, 12x30-row blocks",
+    "state": "car_cruise",
+    "loop_recommended": true
+  },
+  {
+    "source": "car_turn_left.gif",
+    "output": "car_turn_left.eaf",
+    "width": 360,
+    "height": 360,
+    "frames": 4,
+    "duration_ms": [
+      60,
+      60,
+      60,
+      60
+    ],
+    "size_bytes": 63898,
+    "sha256": "91a558d90ad79cceb3b6c948d3fc6bbf34e9a624f456f76189e2c7f420fb1aff",
+    "encoding": "EAF 8-bit indexed BGRA palette + RLE, 12x30-row blocks",
+    "state": "car_turn_left",
+    "loop_recommended": false
+  },
+  {
+    "source": "car_turn_right.gif",
+    "output": "car_turn_right.eaf",
+    "width": 360,
+    "height": 360,
+    "frames": 4,
+    "duration_ms": [
+      60,
+      60,
+      60,
+      60
+    ],
+    "size_bytes": 66140,
+    "sha256": "2e909a69be084e88a933a35567a929ce9ab9dc421d3d7d8bf8f0204198783082",
+    "encoding": "EAF 8-bit indexed BGRA palette + RLE, 12x30-row blocks",
+    "state": "car_turn_right",
+    "loop_recommended": false
+  },
+  {
+    "source": "car_turn_end.gif",
+    "output": "car_turn_end.eaf",
+    "width": 360,
+    "height": 360,
+    "frames": 4,
+    "duration_ms": [
+      60,
+      60,
+      60,
+      60
+    ],
+    "size_bytes": 61304,
+    "sha256": "939037597ecc328d3f8021ae39ff32948e0f149722ea59a204fd052f63016703",
+    "encoding": "EAF 8-bit indexed BGRA palette + RLE, 12x30-row blocks",
+    "state": "car_turn_end",
+    "loop_recommended": false
+  },
+  {
+    "source": "car_reverse.gif",
+    "output": "car_reverse.eaf",
+    "width": 360,
+    "height": 360,
+    "frames": 4,
+    "duration_ms": [
+      60,
+      60,
+      60,
+      60
+    ],
+    "size_bytes": 65342,
+    "sha256": "1944895b4c588b9730a297d85554f281c2f452ad14d6bf9e9ae0ded3d865f529",
+    "encoding": "EAF 8-bit indexed BGRA palette + RLE, 12x30-row blocks",
+    "state": "car_reverse",
+    "loop_recommended": true
+  },
+  {
+    "source": "car_decelerate.gif",
+    "output": "car_decelerate.eaf",
+    "width": 360,
+    "height": 360,
+    "frames": 4,
+    "duration_ms": [
+      60,
+      60,
+      60,
+      60
+    ],
+    "size_bytes": 55530,
+    "sha256": "652dbd5e4ff43a3568a20d6e617caf6ead6bf7bab805f288bcd5174e31e3c4cf",
+    "encoding": "EAF 8-bit indexed BGRA palette + RLE, 12x30-row blocks",
+    "state": "car_decelerate",
+    "loop_recommended": false
+  },
+  {
+    "source": "car_hard_brake.gif",
+    "output": "car_hard_brake.eaf",
+    "width": 360,
+    "height": 360,
+    "frames": 4,
+    "duration_ms": [
+      60,
+      60,
+      60,
+      60
+    ],
+    "size_bytes": 70118,
+    "sha256": "750d436a3cbaa422d4f5a4058aa23a602967583bdc8ce54cbae420fe15229e22",
+    "encoding": "EAF 8-bit indexed BGRA palette + RLE, 12x30-row blocks",
+    "state": "car_hard_brake",
+    "loop_recommended": false
+  },
+  {
+    "source": "car_bump.gif",
+    "output": "car_bump.eaf",
+    "width": 360,
+    "height": 360,
+    "frames": 4,
+    "duration_ms": [
+      60,
+      60,
+      60,
+      60
+    ],
+    "size_bytes": 71910,
+    "sha256": "e9b6ad8111e6e4b3d48ac972e22502767957ce5b78e0e20805cbecb5acf39ff9",
+    "encoding": "EAF 8-bit indexed BGRA palette + RLE, 12x30-row blocks",
+    "state": "car_bump",
+    "loop_recommended": false
+  },
+  {
+    "source": "car_wait.gif",
+    "output": "car_wait.eaf",
+    "width": 360,
+    "height": 360,
+    "frames": 4,
+    "duration_ms": [
+      60,
+      60,
+      60,
+      60
+    ],
+    "size_bytes": 63972,
+    "sha256": "92a0cdf4e0a381be469e1b65d5a0f878226ef30dcdd9d7d5f7d8780325e38ced",
+    "encoding": "EAF 8-bit indexed BGRA palette + RLE, 12x30-row blocks",
+    "state": "car_wait",
+    "loop_recommended": true
+  },
+  {
+    "source": "car_arrive.gif",
+    "output": "car_arrive.eaf",
+    "width": 360,
+    "height": 360,
+    "frames": 4,
+    "duration_ms": [
+      60,
+      60,
+      60,
+      60
+    ],
+    "size_bytes": 59638,
+    "sha256": "77a17a527ba8d766a8f450d931d2d6f7a0e5e63d206ab2fd6a241cf66ee84722",
+    "encoding": "EAF 8-bit indexed BGRA palette + RLE, 12x30-row blocks",
+    "state": "car_arrive",
+    "loop_recommended": false
+  },
+  {
+    "source": "car_sleep.gif",
+    "output": "car_sleep.eaf",
+    "width": 360,
+    "height": 360,
+    "frames": 4,
+    "duration_ms": [
+      60,
+      60,
+      60,
+      60
+    ],
+    "size_bytes": 45252,
+    "sha256": "495cc3f09c27d60b344d1ca787bbd2af45b84856f66639decd03d8e1ad5c087e",
+    "encoding": "EAF 8-bit indexed BGRA palette + RLE, 12x30-row blocks",
+    "state": "car_sleep",
+    "loop_recommended": false
+  },
+  {
+    "source": "car_night.gif",
+    "output": "car_night.eaf",
+    "width": 360,
+    "height": 360,
+    "frames": 4,
+    "duration_ms": [
+      60,
+      60,
+      60,
+      60
+    ],
+    "size_bytes": 44960,
+    "sha256": "caddeba50549083106b5ccf95670f872b26106ff8ee1f44e5b76f3ccdb4fc917",
+    "encoding": "EAF 8-bit indexed BGRA palette + RLE, 12x30-row blocks",
+    "state": "car_night",
+    "loop_recommended": true
+  },
+  {
+    "source": "car_signal_lost.gif",
+    "output": "car_signal_lost.eaf",
+    "width": 360,
+    "height": 360,
+    "frames": 4,
+    "duration_ms": [
+      60,
+      60,
+      60,
+      60
+    ],
+    "size_bytes": 68778,
+    "sha256": "ba16689a4c402290cb2c7438c4e480ea2ffb1274bc2d08cd209a8c3f8a16695e",
+    "encoding": "EAF 8-bit indexed BGRA palette + RLE, 12x30-row blocks",
+    "state": "car_signal_lost",
+    "loop_recommended": false
+  }
+]

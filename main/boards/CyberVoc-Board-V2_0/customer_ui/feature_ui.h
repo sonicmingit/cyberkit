@@ -9,7 +9,8 @@ extern "C" {
 
 #define PAGE_RING_MENU "RING_MENU"
 #define PAGE_TIMER "TIMER"
-#define PAGE_DEVICE_SETTINGS "DEVICE_SETTINGS"
+#define PAGE_CAR_SETTINGS "CAR_SETTINGS"
+#define PAGE_SYSTEM_SETTINGS "SYSTEM_SETTINGS"
 #define PAGE_DEVICE_INFO "DEVICE_INFO"
 
 typedef enum {
@@ -40,8 +41,11 @@ bool feature_car_is_enabled(void);
 bool feature_car_set_enabled(bool enabled);
 void feature_car_recalibrate(void);
 bool feature_car_is_calibrated(void);
+int feature_car_get_calibration_progress(void);
 const char* feature_car_get_event_name(void);
 const char* feature_car_get_status(void);
+bool feature_car_is_debug_enabled(void);
+bool feature_car_set_debug_enabled(bool enabled);
 bool feature_car_set_pack(int value);
 int feature_car_get_pack(void);
 bool feature_car_set_axis(int value);

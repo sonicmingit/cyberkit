@@ -950,10 +950,7 @@ void EspS3Cat::Initializebq27220()
     if (bq27220) {
         ESP_LOGI("BQ27220", "BQ27220 initialized successfully");
     } else {
-        if(!bq27220_create(&bq27220_cfg))
-        {
-            ESP_LOGE("BQ27220", "BQ27220 initialization failed");
-        }
+        ESP_LOGE("BQ27220", "BQ27220 initialization failed");
     }
     
 }
@@ -1101,15 +1098,22 @@ void EspS3Cat::SetAudioAnalysisMode(AudioAnalysisMode mode)
 }
 
 bool EspS3Cat::GetBatteryLevel(int &level, bool& charging, bool& discharging)
-    {
-        level = bq27220_get_state_of_charge(bq27220);
+{
+        charging = false;
+        discharging = false;
+        std::lock_guard<std::mutex> lock(battery_mutex_);
+        if (bq27220 == nullptr) {
+            return GetCachedBatteryLevel(level, charging, discharging);
+        }
+
         battery_status_t status = {};
-        bq27220_get_battery_status(bq27220, &status);
-        
-        int16_t current = bq27220_get_current(bq27220);
-        uint16_t voltage = bq27220_get_voltage(bq27220);
-        uint16_t soc = bq27220_get_state_of_charge(bq27220);
-        level = (int)soc;
+        const esp_err_t status_result = bq27220_get_battery_status(bq27220, &status);
+        const int16_t current = bq27220_get_current(bq27220);
+        const uint16_t soc = bq27220_get_state_of_charge(bq27220);
+        if (status_result != ESP_OK || soc > 100) {
+            return GetCachedBatteryLevel(level, charging, discharging);
+        }
+        level = static_cast<int>(soc);
         // ESP_LOGI(TAG,"=== 电池状态 ===\n");
         // ESP_LOGI(TAG,"电量: %d%%\n", soc);
         //ESP_LOGI(TAG,"电压: %dmV\n", voltage);
@@ -1130,6 +1134,10 @@ bool EspS3Cat::GetBatteryLevel(int &level, bool& charging, bool& discharging)
         } else {
             //ESP_LOGI(TAG,"状态: ⏸️  空闲\n");
         }
+
+        cached_battery_level_.store(level);
+        cached_battery_charging_.store(charging);
+        cached_battery_discharging_.store(discharging);
         
         // 其他状态标志
         // ESP_LOGI(TAG,"标志: %s%s%s%s\n",
@@ -1138,6 +1146,16 @@ bool EspS3Cat::GetBatteryLevel(int &level, bool& charging, bool& discharging)
         //     status.BATTPRES ? "[电池存在]" : "[无电池]",
         //     status.OTC || status.OTD ? "[过温]" : "");
         return true;
-    }
+}
+
+bool EspS3Cat::GetCachedBatteryLevel(int& level, bool& charging, bool& discharging) const
+{
+    const int cached_level = cached_battery_level_.load();
+    if (cached_level < 0) return false;
+    level = cached_level;
+    charging = cached_battery_charging_.load();
+    discharging = cached_battery_discharging_.load();
+    return true;
+}
 
 DECLARE_BOARD(EspS3Cat);

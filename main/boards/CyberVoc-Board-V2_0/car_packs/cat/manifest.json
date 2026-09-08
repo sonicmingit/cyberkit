@@ -1,46 +1,46 @@
 [
   {
-    "source": "设计稿-v1\\动画转换\\eaf\\car_cruise.eaf",
+    "source": "002-薄荷猫咪-v1\\eaf\\car_cruise.eaf",
     "file": "car_cruise.eaf",
     "sha256": "e72bc847685b536b6ca4135ff1adeb966b1fb0c87638282965c9730ce892cb70"
   },
   {
-    "source": "设计稿-v1\\动画转换\\eaf\\car_wait.eaf",
+    "source": "002-薄荷猫咪-v1\\eaf\\car_wait.eaf",
     "file": "car_wait.eaf",
     "sha256": "92a0cdf4e0a381be469e1b65d5a0f878226ef30dcdd9d7d5f7d8780325e38ced"
   },
   {
-    "source": "设计稿-v1\\动画转换\\eaf\\car_accelerate.eaf",
+    "source": "002-薄荷猫咪-v1\\eaf\\car_accelerate.eaf",
     "file": "car_accelerate.eaf",
     "sha256": "a7917ee001e507c4d1eda9d6da573a683f155e04477e1bf41eb7700f63b4c7fe"
   },
   {
-    "source": "设计稿-v1\\动画转换\\eaf\\car_decelerate.eaf",
+    "source": "002-薄荷猫咪-v1\\eaf\\car_decelerate.eaf",
     "file": "car_decelerate.eaf",
     "sha256": "652dbd5e4ff43a3568a20d6e617caf6ead6bf7bab805f288bcd5174e31e3c4cf"
   },
   {
-    "source": "设计稿-v1\\动画转换\\eaf\\car_hard_brake.eaf",
+    "source": "002-薄荷猫咪-v1\\eaf\\car_hard_brake.eaf",
     "file": "car_hard_brake.eaf",
     "sha256": "750d436a3cbaa422d4f5a4058aa23a602967583bdc8ce54cbae420fe15229e22"
   },
   {
-    "source": "设计稿-v1\\动画转换\\eaf\\car_turn_left.eaf",
+    "source": "002-薄荷猫咪-v1\\eaf\\car_turn_left.eaf",
     "file": "car_turn_left.eaf",
     "sha256": "91a558d90ad79cceb3b6c948d3fc6bbf34e9a624f456f76189e2c7f420fb1aff"
   },
   {
-    "source": "设计稿-v1\\动画转换\\eaf\\car_turn_right.eaf",
+    "source": "002-薄荷猫咪-v1\\eaf\\car_turn_right.eaf",
     "file": "car_turn_right.eaf",
     "sha256": "2e909a69be084e88a933a35567a929ce9ab9dc421d3d7d8bf8f0204198783082"
   },
   {
-    "source": "设计稿-v1\\动画转换\\eaf\\car_bump.eaf",
+    "source": "002-薄荷猫咪-v1\\eaf\\car_bump.eaf",
     "file": "car_bump.eaf",
     "sha256": "e9b6ad8111e6e4b3d48ac972e22502767957ce5b78e0e20805cbecb5acf39ff9"
   },
   {
-    "source": "设计稿-v1\\动画转换\\eaf\\car_signal_lost.eaf",
+    "source": "002-薄荷猫咪-v1\\eaf\\car_signal_lost.eaf",
     "file": "car_signal_lost.eaf",
     "sha256": "ba16689a4c402290cb2c7438c4e480ea2ffb1274bc2d08cd209a8c3f8a16695e"
   }

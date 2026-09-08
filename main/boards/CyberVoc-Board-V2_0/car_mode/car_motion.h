@@ -43,6 +43,10 @@ public:
 
     bool Ready() const { return ready_; }
     bool AxisInvalid() const { return axis_invalid_; }
+    int CalibrationProgress() const {
+        if (ready_) return 100;
+        return sample_count_ >= 100 ? 99 : sample_count_;
+    }
 
     Event Feed(const Sample& sample) {
         for (int i = 0; i < 3; ++i) {
@@ -146,6 +150,7 @@ private:
 
     void ClearCalibration() {
         sample_count_ = 0;
+        unstable_count_ = 0;
         calibration_start_ms_ = 0;
         for (int i = 0; i < 3; ++i) {
             acceleration_sum_[i] = 0;
@@ -155,18 +160,22 @@ private:
 
     void Calibrate(const Sample& sample) {
         float norm = std::sqrt(Dot(sample.acceleration, sample.acceleration));
-        bool still = norm > 0.85f && norm < 1.15f;
+        // QMI8658 samples can contain isolated vibration/noise spikes on a
+        // desk or in a parked vehicle. Do not throw away the entire two-second
+        // window for one bad sample; six consecutive unstable samples restart it.
+        bool still = norm > 0.75f && norm < 1.25f;
         for (int i = 0; i < 3; ++i) {
-            still = still && std::fabs(sample.gyro[i]) < 3.0f;
+            still = still && std::fabs(sample.gyro[i]) < 8.0f;
             if (sample_count_ > 0) {
                 still = still &&
-                        std::fabs(sample.acceleration[i] - acceleration_sum_[i] / sample_count_) < 0.04f;
+                        std::fabs(sample.acceleration[i] - acceleration_sum_[i] / sample_count_) < 0.10f;
             }
         }
         if (!still) {
-            ClearCalibration();
+            if (++unstable_count_ >= 6) ClearCalibration();
             return;
         }
+        unstable_count_ = 0;
 
         if (sample_count_ == 0) {
             calibration_start_ms_ = sample.timestamp_ms;
@@ -206,6 +215,7 @@ private:
     int forward_axis_ = 0;
     int forward_sign_ = 1;
     int sample_count_ = 0;
+    int unstable_count_ = 0;
     bool ready_ = false;
     bool axis_invalid_ = false;
     float gravity_norm_ = 1.0f;
