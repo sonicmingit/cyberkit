@@ -7,6 +7,7 @@
 #include "assets/lang_config.h"
 #include <esp_log.h>
 #include "customer_ui/feature_ui.h"
+#include "car_mode/expression_pack_manager.h"
 
 #define TAG "CyberVocTools"
 
@@ -154,5 +155,32 @@ void CyberVocTools::Initialize(EspS3Cat* board)
         return std::string("enabled=") + (feature_car_is_enabled() ? "true" : "false") +
                ", calibrated=" + (feature_car_is_calibrated() ? "true" : "false") +
                ", event=" + feature_car_get_event_name();
+    });
+
+    mcp_server.AddTool("self.expression_packs.rescan", "重新扫描 TF 卡 /miaoban/packs 下的 MEPACK 表情包。",
+    PropertyList(std::vector<Property>{}), [](const PropertyList&) -> ReturnValue {
+        expression_packs::RequestScan();
+        return true;
+    });
+
+    mcp_server.AddTool("self.expression_packs.select", "选择内置或 TF 卡表情包；TF 包必须先扫描成功。",
+    PropertyList({Property("source", kPropertyTypeString),
+                  Property("pack_id", kPropertyTypeString),
+                  Property("version", kPropertyTypeInteger, 1, 1, 1000000)}),
+    [](const PropertyList& properties) -> ReturnValue {
+        const std::string& source = properties["source"].value<std::string>();
+        if (source != "builtin" && source != "tf") return false;
+        return expression_packs::Select(source == "tf" ? expression_packs::Source::Tf :
+                                                         expression_packs::Source::Builtin,
+                                        properties["pack_id"].value<std::string>().c_str(),
+                                        properties["version"].value<int>());
+    });
+
+    mcp_server.AddTool("self.expression_packs.status", "查询当前表情包和最近一次 TF 扫描/加载状态。",
+    PropertyList(std::vector<Property>{}), [](const PropertyList&) -> ReturnValue {
+        char current[96]{}, status[112]{};
+        expression_packs::CurrentLabel(current, sizeof(current));
+        expression_packs::StatusText(status, sizeof(status));
+        return std::string("current=") + current + ", status=" + status;
     });
 }

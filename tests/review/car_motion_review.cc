@@ -29,6 +29,15 @@ int main() {
         Check("sustained acceleration", r.event == car::Event::Accelerate, r.event);
     }
     {
+        Replay r;
+        for (int i = 0; i < 120; ++i) {
+            // An isolated vibration sample must not erase the whole stable window.
+            r.Feed(i == 45 ? 0.16f : 0.0f, 0, 1, 0, i == 45 ? 9.0f : 0.0f);
+        }
+        Check("calibration tolerates an isolated noisy sample",
+              r.detector.Ready() && r.detector.CalibrationProgress() == 100, r.event);
+    }
+    {
         Replay r; r.Flat();
         for (int i = 0; i < 40; ++i) r.Feed(0, 0, 1, 20);
         Check("sustained turn", r.event == car::Event::Left, r.event);

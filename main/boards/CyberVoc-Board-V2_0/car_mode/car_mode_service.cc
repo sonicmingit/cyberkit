@@ -1,4 +1,6 @@
 #include "car_motion.h"
+#include "expression_pack_manager.h"
+#include "../CyberVoc.h"
 #include "../customer_ui/feature_ui.h"
 #include "../ui_bridge.h"
 #include "application.h"
@@ -18,7 +20,7 @@ std::mutex mutex;
 car::Detector detector;
 std::atomic<bool> enabled{false};
 std::atomic<bool> debug_enabled{false};
-int pack = 0, axis = 0, sign = 1;
+int axis = 0, sign = 1;
 int64_t last_sample = 0;
 bool sampled = false;
 bool online = false;
@@ -46,8 +48,8 @@ bool Save(const char* key, int value) {
     nvs_handle_t handle;
     esp_err_t err = nvs_open("car_mode", NVS_READWRITE, &handle);
     if (err != ESP_OK) return false;
-    err = std::strcmp(key, "enabled") == 0 ? nvs_set_u8(handle, key, value ? 1 : 0) :
-                                             nvs_set_i32(handle, key, value);
+    const bool bool_key = std::strcmp(key, "enabled") == 0 || std::strcmp(key, "debug") == 0;
+    err = bool_key ? nvs_set_u8(handle, key, value ? 1 : 0) : nvs_set_i32(handle, key, value);
     if (err == ESP_OK) err = nvs_commit(handle);
     nvs_close(handle);
     if (err != ESP_OK) ESP_LOGE("car_mode", "Cannot save %s: %s", key, esp_err_to_name(err));
@@ -83,22 +85,19 @@ car::Event DisplayEventLocked(int64_t now) {
 
 void Poll() {
     feature_timer_poll();
-    auto* display = dynamic_cast<emote::EmoteDisplay*>(Board::GetInstance().GetDisplay());
-    if (!display) return;
     if (!enabled.load() || !ui_bridge_is_on_home_page() ||
         Application::GetInstance().GetDeviceState() != kDeviceStateIdle) {
-        display->StopCarEmotion();
+        expression_packs::StopPlayback();
         return;
     }
-    char name[40];
     char debug_text[48] = {};
+    const char* state = "cruise";
     {
         std::lock_guard<std::mutex> lock(mutex);
         const int64_t now = esp_timer_get_time() / 1000;
         const bool signal_lost = !online || !sampled || now - last_sample > 1000;
         const car::Event shown_event = signal_lost ? car::Event::SignalLost : DisplayEventLocked(now);
-        const char* state = signal_lost ? "signal_lost" : !detector.Ready() ? "wait" : car::Name(shown_event);
-        std::snprintf(name, sizeof(name), "car_%s_%s", pack == 0 ? "tita" : "default", state);
+        state = signal_lost ? "signal_lost" : !detector.Ready() ? "wait" : car::Name(shown_event);
         if (debug_enabled.load()) {
             if (!detector.Ready() && !signal_lost) {
                 std::snprintf(debug_text, sizeof(debug_text), "表情：校准中 %d%%", detector.CalibrationProgress());
@@ -107,7 +106,7 @@ void Poll() {
             }
         }
     }
-    display->ShowCarEmotion(name, debug_text[0] ? debug_text : nullptr);
+    expression_packs::RequestState(state, debug_text[0] ? debug_text : nullptr);
 }
 }
 
@@ -117,7 +116,6 @@ extern "C" void feature_services_start() {
         Settings settings("car_mode", false);
         enabled.store(settings.GetBool("enabled", false));
         debug_enabled.store(settings.GetBool("debug", false));
-        pack = settings.GetInt("pack", 0) == 1 ? 1 : 0;
         const int saved_axis = settings.GetInt("axis", 0);
         axis = saved_axis >= 0 && saved_axis <= 2 ? saved_axis : 0;
         sign = settings.GetInt("sign", 1) < 0 ? -1 : 1;
@@ -128,6 +126,8 @@ extern "C" void feature_services_start() {
         detector.Reset(axis, sign);
         event_since = 0;
     }
+    auto* cat = dynamic_cast<EspS3Cat*>(&Board::GetInstance());
+    expression_packs::Start(cat && cat->IsTfCardMounted());
     feature_ui_on_ready();
     if (heartbeat) return;
     esp_timer_create_args_t args = {};
@@ -158,12 +158,13 @@ extern "C" void feature_car_recalibrate() {
 }
 extern "C" bool feature_car_set_pack(int value) {
     if (value < 0 || value > 1) return false;
-    std::lock_guard<std::mutex> lock(mutex);
-    if (!Save("pack", value)) return false;
-    pack = value; return true;
+    return expression_packs::Select(expression_packs::Source::Builtin,
+                                    value == 0 ? "tita" : "default", 1);
 }
 extern "C" int feature_car_get_pack() {
-    std::lock_guard<std::mutex> lock(mutex); return pack;
+    char label[80]{};
+    expression_packs::CurrentLabel(label, sizeof(label));
+    return std::strstr(label, "TITA") ? 0 : 1;
 }
 extern "C" int feature_car_get_axis() {
     std::lock_guard<std::mutex> lock(mutex); return axis * 2 + (sign < 0 ? 1 : 0);

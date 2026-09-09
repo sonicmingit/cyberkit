@@ -1,6 +1,6 @@
 """Create a reproducible V2.0 asset profile without changing source animations.
 
-Keeps TITA and CAT, samples whole independent EAF frames and adjusts FPS to
+Keeps TITA and the approved DEFAULT pack, samples whole independent EAF frames and adjusts FPS to
 preserve approximate duration. Generated directories must live under a build.
 """
 import argparse
@@ -96,14 +96,14 @@ def main():
         if entry["src"] == "insert.eaf":
             entry["fps"] = max(1, round(entry["fps"] * ratio))
     records.append({"name": "insert.eaf", "original": len(original), "bytes": len(packed), "ratio": ratio})
-    for pack in ("tita", "cat"):
+    for pack in ("tita", "default"):
         for source in sorted((args.packs / pack).glob("*.eaf")):
             data = source.read_bytes()
             data, ratio = compact(data, 6 if pack == "tita" else 4)
             target = f"car_{pack}_{source.stem.removeprefix(pack + '_').removeprefix('car_')}.eaf"
             (args.output / "emoji_large" / target).write_bytes(data)
             emotes.append({"emote": target[:-4], "src": target, "loop": True,
-                           "fps": max(1, round((15 if pack == "tita" else 8) * ratio))})
+                           "fps": max(1, round((15 if pack == "tita" else 10) * ratio))})
             records.append({"name": target, "bytes": len(data), "source_sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
                             "sha256": hashlib.sha256(data).hexdigest()})
     # No matching TITA driving art exists yet: use its neutral cruise explicitly,
@@ -117,7 +117,7 @@ def main():
         raise ValueError(f"Source asset profile {total} exceeds budget incl. packing reserve")
     # Keep audit metadata out of the firmware resource tree.
     args.output.with_suffix(".manifest.json").write_text(json.dumps({"source_bytes": total, "assets": records}, indent=2), encoding="utf-8")
-    print(f"V2 TITA+CAT asset profile: {total} bytes (final image still requires validation)")
+    print(f"V2 TITA+DEFAULT asset profile: {total} bytes (final image still requires validation)")
 
 
 if __name__ == "__main__":

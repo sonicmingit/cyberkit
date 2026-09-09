@@ -85,7 +85,14 @@ public:
     bool StopAnimDialog();
     bool InsertAnimDialog(const char* emoji_name, uint32_t duration_ms);
     // Dedicated full-face, low-priority car display; never drives the base.
-    bool ShowCarEmotion(const char* emoji_name);
+    bool ShowCarEmotion(const char* emoji_name, const char* debug_text = nullptr);
+    // Shows an EAF whose storage is owned by the display until the animation is
+    // stopped or replaced. This prevents TF/PSRAM data from being released
+    // while the graphics decoder still references it.
+    bool ShowOwnedCarEmotion(const char* animation_id, std::shared_ptr<uint8_t> data,
+                             size_t size, uint8_t fps, bool loop,
+                             const char* debug_text = nullptr);
+    void UpdateCarDebugText(const char* debug_text);
     void StopCarEmotion();
 
     EmoteEngine* GetEngine() const;
@@ -125,6 +132,8 @@ private:
     // Non-LVGL asset data storage
     std::map<std::string, AssetData> emoji_data_map_;
     std::map<std::string, AssetData> icon_data_map_;
+    std::shared_ptr<uint8_t> owned_car_data_;
+    std::string owned_car_name_;
 
 };
 

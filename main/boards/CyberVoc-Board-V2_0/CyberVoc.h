@@ -48,6 +48,8 @@ public:
     virtual void SetHeadTouchEnabled(bool enabled) override;
     virtual bool IsShakeEnabled() const override { return shake_enabled_; }
     virtual void SetShakeEnabled(bool enabled) override;
+    bool IsTfCardMounted() const { return tf_card_mounted_.load(); }
+    bool EnsureTfCardMounted();
 
     // Power off by releasing the latch (PG2).
     void PowerOff();
@@ -63,6 +65,8 @@ private:
     TouchSensor* touch_sensor_ = nullptr;
     std::atomic<bool> head_touch_enabled_{false};
     std::atomic<bool> shake_enabled_{false};
+    std::atomic<bool> tf_card_mounted_{false};
+    std::mutex tf_card_mutex_;
 
     i2c_bus_handle_t i2c_bus = NULL; // bq27220 uses this
     TaskHandle_t imu_task_handle_ = nullptr;

@@ -45,7 +45,7 @@ def verify(build):
     emotes = {item["name"]: item for item in json.loads(files["index.json"])["emoji_collection"]}
     events = ("cruise", "wait", "accelerate", "decelerate", "hard_brake", "bump",
               "turn_left", "turn_right", "signal_lost")
-    for pack in ("tita", "cat"):
+    for pack in ("tita", "default"):
         for event in events:
             name = f"car_{pack}_{event}"
             assert emotes[name]["file"] in files, f"Missing resource: {name}"

@@ -11,11 +11,11 @@
 #include <esp_heap_caps.h>
 #include <esp_psram.h>
 #include <esp_idf_version.h>
-#include <string>
 #include "../CyberVoc.h"
 #include "display/display.h"
 #include "settings.h"
 #include "../ui_bridge.h"
+#include "../car_mode/expression_pack_manager.h"
 
 #include <algorithm>
 #include <atomic>
@@ -39,6 +39,7 @@ lv_obj_t* menu_container = nullptr;
 lv_obj_t* timer_container = nullptr;
 lv_obj_t* car_settings_container = nullptr;
 lv_obj_t* system_settings_container = nullptr;
+lv_obj_t* expression_packs_container = nullptr;
 lv_obj_t* menu_arcs[6]{};
 lv_obj_t* menu_icons[6]{};
 lv_obj_t* menu_labels[6]{};
@@ -50,8 +51,15 @@ lv_obj_t* timer_action_label = nullptr;
 lv_obj_t* settings_status_label = nullptr;
 lv_obj_t* settings_debug_label = nullptr;
 lv_obj_t* system_touch_label = nullptr;
+lv_obj_t* system_shake_label = nullptr;
+lv_obj_t* system_aec_label = nullptr;
+lv_obj_t* system_doa_label = nullptr;
 lv_obj_t* system_volume_label = nullptr;
 lv_obj_t* system_brightness_label = nullptr;
+lv_obj_t* packs_current_label = nullptr;
+lv_obj_t* packs_status_label = nullptr;
+lv_obj_t* packs_list = nullptr;
+uint32_t packs_ui_revision = UINT32_MAX;
 lv_timer_t* ui_refresh_timer = nullptr;
 lv_obj_t* info_container = nullptr;
 lv_obj_t* info_label = nullptr;
@@ -114,16 +122,18 @@ void UpdateMenuState();
 void UpdateSettingsLabel() {
     if (!settings_status_label || !ui_ready.load()) return;
     static const char* axes[] = {"X+", "X-", "Y+", "Y-", "Z+", "Z-"};
-    char status[160];
-    const bool calibrated = feature_car_is_calibrated();
-    if (calibrated) {
-        std::snprintf(status, sizeof(status), "状态：%s\n表情：%s  车头方向：%s",
-                      CarStatusText(feature_car_get_status()),
-                      feature_car_get_pack() == 0 ? "TITA" : "默认", axes[feature_car_get_axis()]);
-    } else {
+    char status[192];
+    char pack_label[80]{};
+    expression_packs::CurrentLabel(pack_label, sizeof(pack_label));
+    const char* raw_status = feature_car_get_status();
+    if (std::strcmp(raw_status, "KEEP STILL") == 0) {
         std::snprintf(status, sizeof(status), "状态：%s %d%%\n表情：%s  车头方向：%s",
-                      CarStatusText(feature_car_get_status()), feature_car_get_calibration_progress(),
-                      feature_car_get_pack() == 0 ? "TITA" : "默认", axes[feature_car_get_axis()]);
+                      CarStatusText(raw_status), feature_car_get_calibration_progress(),
+                      pack_label, axes[feature_car_get_axis()]);
+    } else {
+        std::snprintf(status, sizeof(status), "状态：%s\n表情：%s  车头方向：%s",
+                      CarStatusText(raw_status),
+                      pack_label, axes[feature_car_get_axis()]);
     }
     lv_label_set_text(settings_status_label, status);
     if (settings_debug_label) {
@@ -135,20 +145,61 @@ void UpdateSettingsLabel() {
 void UpdateSystemSettingsLabels() {
     if (!ui_ready.load()) return;
     auto& board = Board::GetInstance();
+    auto set_switch = [](lv_obj_t* label, bool on) {
+        if (!label) return;
+        lv_label_set_text(label, on ? "开" : "关");
+        lv_obj_set_style_bg_color(lv_obj_get_parent(label),
+                                  lv_color_hex(on ? 0xFF5A1F : 0x263032), 0);
+        lv_obj_set_style_text_color(label, lv_color_white(), 0);
+    };
     if (system_touch_label) {
-        lv_label_set_text(system_touch_label, board.IsHeadTouchEnabled() ? "摸头触摸：开" : "摸头触摸：关");
+        set_switch(system_touch_label, board.IsHeadTouchEnabled());
+    }
+    if (system_shake_label) {
+        set_switch(system_shake_label, board.IsShakeEnabled());
+    }
+    if (system_aec_label) {
+        set_switch(system_aec_label, Application::GetInstance().GetAecMode() != kAecOff);
+    }
+    if (system_doa_label) {
+        auto* cat = dynamic_cast<EspS3Cat*>(&board);
+        set_switch(system_doa_label,
+                   cat && cat->GetAudioAnalysisMode() == AudioAnalysisMode::DOA_FOLLOW);
     }
     if (system_volume_label) {
         auto* codec = board.GetAudioCodec();
         char text[32];
-        std::snprintf(text, sizeof(text), "音量  %d%%", codec ? codec->output_volume() : 0);
+        std::snprintf(text, sizeof(text), "%d", codec ? codec->output_volume() : 0);
         lv_label_set_text(system_volume_label, text);
     }
     if (system_brightness_label) {
         auto* backlight = board.GetBacklight();
         char text[32];
-        std::snprintf(text, sizeof(text), "亮度  %u%%", backlight ? backlight->brightness() : 0);
+        std::snprintf(text, sizeof(text), "%u", backlight ? backlight->brightness() : 0);
         lv_label_set_text(system_brightness_label, text);
+    }
+}
+
+void RebuildPackList();
+
+void UpdatePackLabels() {
+    if (!ui_ready.load()) return;
+    const uint32_t current_revision = expression_packs::Revision();
+    if (packs_ui_revision != current_revision) {
+        packs_ui_revision = current_revision;
+        RebuildPackList();
+    }
+    if (packs_current_label) {
+        char current[96]{};
+        expression_packs::CurrentLabel(current, sizeof(current));
+        char text[120];
+        std::snprintf(text, sizeof(text), "当前：%s", current);
+        lv_label_set_text(packs_current_label, text);
+    }
+    if (packs_status_label) {
+        char text[112]{};
+        expression_packs::StatusText(text, sizeof(text));
+        lv_label_set_text(packs_status_label, text);
     }
 }
 
@@ -159,6 +210,7 @@ void UiRefreshCallback(lv_timer_t*) {
     UpdateMenuState();
     UpdateSettingsLabel();
     UpdateSystemSettingsLabels();
+    UpdatePackLabels();
     const char* current_page = ui_bridge_get_current_page();
     if (info_label && current_page && std::strcmp(current_page, PAGE_DEVICE_INFO) == 0 &&
         info_dirty.exchange(false)) {
@@ -227,7 +279,8 @@ const MenuItem kMenuItems[] = {
     {FONT_AWESOME_ALARM_CLOCK, "计时器", true, []() { return feature_timer_get_state() == FEATURE_TIMER_RUNNING ||
                                       feature_timer_get_state() == FEATURE_TIMER_PAUSED; },
         [](bool) { OpenFeaturePage(PAGE_TIMER); }},
-    {"+", "功能模板", false, nullptr, nullptr},
+    {FONT_AWESOME_SD_CARD, "TF表情包", true, expression_packs::IsTfSelected,
+        [](bool) { OpenFeaturePage(PAGE_EXPRESSION_PACKS); }},
 };
 static_assert(sizeof(kMenuItems)/sizeof(kMenuItems[0]) == 6);
 
@@ -319,10 +372,7 @@ void BackToMenuEvent(lv_event_t*) {
     Application::GetInstance().Schedule([]() { feature_ui_open_menu(); });
 }
 void PackEvent(lv_event_t*) {
-    Application::GetInstance().Schedule([]() {
-        if (!feature_car_set_pack(1 - feature_car_get_pack()))
-            Board::GetInstance().GetDisplay()->ShowNotification("表情包保存失败");
-    });
+    Application::GetInstance().Schedule([]() { OpenFeaturePage(PAGE_EXPRESSION_PACKS); });
 }
 void AxisEvent(lv_event_t*) {
     Application::GetInstance().Schedule([]() {
@@ -346,6 +396,40 @@ void HeadTouchEvent(lv_event_t*) {
     Application::GetInstance().Schedule([]() {
         auto& board = Board::GetInstance();
         board.SetHeadTouchEnabled(!board.IsHeadTouchEnabled());
+    });
+}
+void ShakeEvent(lv_event_t*) {
+    Application::GetInstance().Schedule([]() {
+        auto& board = Board::GetInstance();
+        board.SetShakeEnabled(!board.IsShakeEnabled());
+    });
+}
+void AecEvent(lv_event_t*) {
+    Application::GetInstance().Schedule([]() {
+        auto& app = Application::GetInstance();
+        app.SetAecMode(app.GetAecMode() == kAecOff ? kAecOnDeviceSide : kAecOff);
+    });
+}
+void DoaEvent(lv_event_t*) {
+    Application::GetInstance().Schedule([]() {
+        auto* cat = dynamic_cast<EspS3Cat*>(&Board::GetInstance());
+        if (!cat) return;
+        cat->SetAudioAnalysisMode(cat->GetAudioAnalysisMode() == AudioAnalysisMode::DOA_FOLLOW ?
+                                  AudioAnalysisMode::DISABLED : AudioAnalysisMode::DOA_FOLLOW);
+    });
+}
+void PackRescanEvent(lv_event_t*) {
+    Application::GetInstance().Schedule([]() { expression_packs::RequestScan(); });
+}
+void PackSelectEvent(lv_event_t* event) {
+    const size_t index = static_cast<size_t>(reinterpret_cast<uintptr_t>(lv_event_get_user_data(event)));
+    Application::GetInstance().Schedule([index]() {
+        expression_packs::UiDescriptor items[34]{};
+        const size_t count = expression_packs::CopyUiDescriptors(items, 34);
+        if (index >= count || !expression_packs::Select(items[index].source, items[index].pack_id,
+                                                        items[index].version)) {
+            Board::GetInstance().GetDisplay()->ShowNotification("表情包切换失败");
+        }
     });
 }
 void VolumeAdjustEvent(lv_event_t* event) {
@@ -405,7 +489,7 @@ void CreateMenu(lv_obj_t* screen) {
 
         menu_icons[i] = lv_label_create(menu_container);
         lv_label_set_text(menu_icons[i], kMenuItems[i].icon);
-        lv_obj_set_style_text_font(menu_icons[i], i == 5 ? &lv_font_montserrat_20 : &BUILTIN_ICON_FONT, 0);
+        lv_obj_set_style_text_font(menu_icons[i], &BUILTIN_ICON_FONT, 0);
         lv_obj_set_style_text_color(menu_icons[i],
                                     kMenuItems[i].available ? lv_color_hex(0xF2F0EB) : lv_color_hex(0x777777), 0);
         lv_obj_align(menu_icons[i], LV_ALIGN_TOP_LEFT, label_x - 10, label_y - 22);
@@ -511,12 +595,60 @@ void CreateCarSettingsPage(lv_obj_t* screen) {
     lv_obj_set_style_text_align(help, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_align(help, LV_ALIGN_CENTER, 0, -43);
 
-    CreateTextButton(car_settings_container, "切换表情", 118, 42, -65, 6, PackEvent);
+    CreateTextButton(car_settings_container, "表情包", 118, 42, -65, 6, PackEvent);
     CreateTextButton(car_settings_container, "车头方向", 118, 42, 65, 6, AxisEvent);
     CreateTextButton(car_settings_container, "重新校准", 142, 40, 0, 54, CalibrateEvent);
     settings_debug_label = CreateTextButton(car_settings_container, "调试显示：关", 154, 40, 0, 101, DebugEvent);
     CreateTextButton(car_settings_container, "返回菜单", 112, 36, 0, 145, BackToMenuEvent);
     lv_obj_add_flag(car_settings_container, LV_OBJ_FLAG_HIDDEN);
+}
+
+lv_obj_t* CreateSwitchRow(lv_obj_t* parent, const char* name, lv_coord_t y, lv_event_cb_t callback) {
+    lv_obj_t* name_label = lv_label_create(parent);
+    lv_label_set_text(name_label, name);
+    lv_obj_set_style_text_font(name_label, &BUILTIN_TEXT_FONT, 0);
+    lv_obj_set_style_text_color(name_label, lv_color_white(), 0);
+    lv_obj_set_pos(name_label, 18, y + 8);
+
+    lv_obj_t* button = lv_btn_create(parent);
+    lv_obj_set_size(button, 72, 36);
+    lv_obj_set_pos(button, 190, y);
+    lv_obj_set_style_radius(button, 18, 0);
+    lv_obj_set_style_bg_color(button, lv_color_hex(0x263032), 0);
+    lv_obj_set_style_border_width(button, 1, 0);
+    lv_obj_set_style_border_color(button, lv_color_hex(0x596769), 0);
+    lv_obj_add_event_cb(button, [](lv_event_t*) { ui_bridge_track_pointer(); }, LV_EVENT_PRESSING, nullptr);
+    lv_obj_add_event_cb(button, [](lv_event_t* event) {
+        if (!ui_bridge_click_allowed()) lv_event_stop_processing(event);
+    }, LV_EVENT_CLICKED, nullptr);
+    lv_obj_add_event_cb(button, callback, LV_EVENT_CLICKED, nullptr);
+    lv_obj_t* value = lv_label_create(button);
+    lv_label_set_text(value, "关");
+    lv_obj_set_style_text_font(value, &BUILTIN_TEXT_FONT, 0);
+    lv_obj_set_style_text_color(value, lv_color_hex(0xFF6A24), 0);
+    lv_obj_center(value);
+    return value;
+}
+
+lv_obj_t* CreateSmallControl(lv_obj_t* parent, const char* text, lv_coord_t x, lv_coord_t y,
+                             lv_event_cb_t callback, intptr_t value) {
+    lv_obj_t* button = lv_btn_create(parent);
+    lv_obj_set_size(button, 42, 36);
+    lv_obj_set_pos(button, x, y);
+    lv_obj_set_style_radius(button, 18, 0);
+    lv_obj_set_style_bg_color(button, lv_color_hex(0x263032), 0);
+    lv_obj_add_event_cb(button, [](lv_event_t*) { ui_bridge_track_pointer(); }, LV_EVENT_PRESSING, nullptr);
+    lv_obj_add_event_cb(button, [](lv_event_t* event) {
+        if (!ui_bridge_click_allowed()) lv_event_stop_processing(event);
+    }, LV_EVENT_CLICKED, nullptr);
+    lv_obj_add_event_cb(button, callback, LV_EVENT_CLICKED,
+                        reinterpret_cast<void*>(value));
+    lv_obj_t* label = lv_label_create(button);
+    lv_label_set_text(label, text);
+    lv_obj_set_style_text_font(label, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(label, lv_color_white(), 0);
+    lv_obj_center(label);
+    return label;
 }
 
 void CreateSystemSettingsPage(lv_obj_t* screen) {
@@ -530,33 +662,130 @@ void CreateSystemSettingsPage(lv_obj_t* screen) {
     lv_label_set_text(title, "系统设置");
     lv_obj_set_style_text_font(title, &BUILTIN_TEXT_FONT, 0);
     lv_obj_set_style_text_color(title, lv_color_hex(0xFF8A35), 0);
-    lv_obj_align(title, LV_ALIGN_CENTER, 0, -126);
+    lv_obj_align(title, LV_ALIGN_CENTER, 0, -145);
 
-    system_touch_label = lv_label_create(system_settings_container);
-    lv_obj_set_style_text_font(system_touch_label, &BUILTIN_TEXT_FONT, 0);
-    lv_obj_set_style_text_color(system_touch_label, lv_color_white(), 0);
-    lv_obj_align(system_touch_label, LV_ALIGN_CENTER, -45, -75);
-    CreateTextButton(system_settings_container, "切换", 82, 40, 93, -75, HeadTouchEvent);
+    lv_obj_t* scroll = lv_obj_create(system_settings_container);
+    lv_obj_set_size(scroll, 294, 252);
+    lv_obj_align(scroll, LV_ALIGN_CENTER, 0, -5);
+    lv_obj_set_style_bg_opa(scroll, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(scroll, 0, 0);
+    lv_obj_set_style_pad_all(scroll, 4, 0);
+    lv_obj_set_scroll_dir(scroll, LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(scroll, LV_SCROLLBAR_MODE_ACTIVE);
 
-    system_volume_label = lv_label_create(system_settings_container);
-    lv_obj_set_style_text_font(system_volume_label, &BUILTIN_TEXT_FONT, 0);
+    system_touch_label = CreateSwitchRow(scroll, "头部触摸", 4, HeadTouchEvent);
+    system_shake_label = CreateSwitchRow(scroll, "摇晃响应", 48, ShakeEvent);
+    system_aec_label = CreateSwitchRow(scroll, "实时聊天", 92, AecEvent);
+    system_doa_label = CreateSwitchRow(scroll, "声源跟随", 136, DoaEvent);
+
+    lv_obj_t* volume_name = lv_label_create(scroll);
+    lv_label_set_text(volume_name, "音量");
+    lv_obj_set_style_text_font(volume_name, &BUILTIN_TEXT_FONT, 0);
+    lv_obj_set_style_text_color(volume_name, lv_color_white(), 0);
+    lv_obj_set_pos(volume_name, 18, 190);
+    system_volume_label = lv_label_create(scroll);
+    lv_obj_set_style_text_font(system_volume_label, &lv_font_montserrat_20, 0);
     lv_obj_set_style_text_color(system_volume_label, lv_color_white(), 0);
-    lv_obj_align(system_volume_label, LV_ALIGN_CENTER, 0, -22);
-    CreateTextButton(system_settings_container, "−", 62, 40, -77, 23, VolumeAdjustEvent,
-                     reinterpret_cast<void*>(static_cast<intptr_t>(-10)));
-    CreateTextButton(system_settings_container, "+", 62, 40, 77, 23, VolumeAdjustEvent,
-                     reinterpret_cast<void*>(static_cast<intptr_t>(10)));
+    lv_obj_set_pos(system_volume_label, 205, 190);
+    CreateSmallControl(scroll, "-", 148, 182, VolumeAdjustEvent, -10);
+    CreateSmallControl(scroll, "+", 232, 182, VolumeAdjustEvent, 10);
 
-    system_brightness_label = lv_label_create(system_settings_container);
-    lv_obj_set_style_text_font(system_brightness_label, &BUILTIN_TEXT_FONT, 0);
+    lv_obj_t* brightness_name = lv_label_create(scroll);
+    lv_label_set_text(brightness_name, "亮度");
+    lv_obj_set_style_text_font(brightness_name, &BUILTIN_TEXT_FONT, 0);
+    lv_obj_set_style_text_color(brightness_name, lv_color_white(), 0);
+    lv_obj_set_pos(brightness_name, 18, 242);
+    system_brightness_label = lv_label_create(scroll);
+    lv_obj_set_style_text_font(system_brightness_label, &lv_font_montserrat_20, 0);
     lv_obj_set_style_text_color(system_brightness_label, lv_color_white(), 0);
-    lv_obj_align(system_brightness_label, LV_ALIGN_CENTER, 0, 68);
-    CreateTextButton(system_settings_container, "−", 62, 40, -77, 108, BrightnessAdjustEvent,
-                     reinterpret_cast<void*>(static_cast<intptr_t>(-10)));
-    CreateTextButton(system_settings_container, "+", 62, 40, 77, 108, BrightnessAdjustEvent,
-                     reinterpret_cast<void*>(static_cast<intptr_t>(10)));
-    CreateTextButton(system_settings_container, "返回菜单", 118, 38, 0, 151, BackToMenuEvent);
+    lv_obj_set_pos(system_brightness_label, 205, 242);
+    CreateSmallControl(scroll, "-", 148, 234, BrightnessAdjustEvent, -10);
+    CreateSmallControl(scroll, "+", 232, 234, BrightnessAdjustEvent, 10);
+
+    CreateTextButton(system_settings_container, "返回菜单", 118, 38, 0, 148, BackToMenuEvent);
     lv_obj_add_flag(system_settings_container, LV_OBJ_FLAG_HIDDEN);
+}
+
+void RebuildPackList() {
+    if (!packs_list) return;
+    lv_obj_clean(packs_list);
+    expression_packs::UiDescriptor items[34]{};
+    const size_t count = expression_packs::CopyUiDescriptors(items, 34);
+    for (size_t i = 0; i < count; ++i) {
+        lv_obj_t* button = lv_btn_create(packs_list);
+        lv_obj_set_size(button, 274, 50);
+        lv_obj_set_pos(button, 4, static_cast<lv_coord_t>(i * 56 + 2));
+        lv_obj_set_style_radius(button, 15, 0);
+        lv_obj_set_style_bg_color(button, lv_color_hex(0x151D1E), 0);
+        lv_obj_set_style_border_width(button, items[i].selected ? 2 : 1, 0);
+        lv_obj_set_style_border_color(button,
+                                      lv_color_hex(items[i].selected ? 0xFF5A1F : 0x465153), 0);
+        lv_obj_add_event_cb(button, [](lv_event_t*) { ui_bridge_track_pointer(); }, LV_EVENT_PRESSING,
+                            nullptr);
+        lv_obj_add_event_cb(button, [](lv_event_t* event) {
+            if (!ui_bridge_click_allowed()) lv_event_stop_processing(event);
+        }, LV_EVENT_CLICKED, nullptr);
+        lv_obj_add_event_cb(button, PackSelectEvent, LV_EVENT_CLICKED,
+                            reinterpret_cast<void*>(static_cast<uintptr_t>(i)));
+
+        char name[92];
+        std::snprintf(name, sizeof(name), "%s%s v%d", items[i].selected ? "● " : "○ ",
+                      items[i].display_name, items[i].version);
+        lv_obj_t* name_label = lv_label_create(button);
+        lv_label_set_text(name_label, name);
+        lv_obj_set_style_text_font(name_label, &BUILTIN_TEXT_FONT, 0);
+        lv_obj_set_style_text_color(name_label,
+                                    lv_color_hex(items[i].selected ? 0xFF8A35 : 0xF2F0EB), 0);
+        lv_obj_align(name_label, LV_ALIGN_LEFT_MID, 6, 0);
+
+        lv_obj_t* source = lv_label_create(button);
+        lv_label_set_text(source, items[i].source == expression_packs::Source::Tf ? "TF卡" : "内置");
+        lv_obj_set_style_text_font(source, &BUILTIN_TEXT_FONT, 0);
+        lv_obj_set_style_text_color(source, lv_color_hex(0x9CA5A3), 0);
+        lv_obj_align(source, LV_ALIGN_RIGHT_MID, -6, 0);
+    }
+}
+
+void CreateExpressionPacksPage(lv_obj_t* screen) {
+    expression_packs_container = lv_obj_create(screen);
+    lv_obj_set_size(expression_packs_container, DISPLAY_WIDTH, DISPLAY_HEIGHT);
+    lv_obj_set_style_bg_color(expression_packs_container, lv_color_black(), 0);
+    lv_obj_set_style_border_width(expression_packs_container, 0, 0);
+    lv_obj_clear_flag(expression_packs_container, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* title = lv_label_create(expression_packs_container);
+    lv_label_set_text(title, "表情包");
+    lv_obj_set_style_text_font(title, &BUILTIN_TEXT_FONT, 0);
+    lv_obj_set_style_text_color(title, lv_color_hex(0xFF8A35), 0);
+    lv_obj_align(title, LV_ALIGN_CENTER, 0, -145);
+
+    packs_current_label = lv_label_create(expression_packs_container);
+    lv_obj_set_width(packs_current_label, 280);
+    lv_obj_set_style_text_font(packs_current_label, &BUILTIN_TEXT_FONT, 0);
+    lv_obj_set_style_text_color(packs_current_label, lv_color_white(), 0);
+    lv_obj_set_style_text_align(packs_current_label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(packs_current_label, LV_ALIGN_CENTER, 0, -112);
+
+    packs_list = lv_obj_create(expression_packs_container);
+    lv_obj_set_size(packs_list, 294, 190);
+    lv_obj_align(packs_list, LV_ALIGN_CENTER, 0, -4);
+    lv_obj_set_style_bg_opa(packs_list, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(packs_list, 0, 0);
+    lv_obj_set_style_pad_all(packs_list, 2, 0);
+    lv_obj_set_scroll_dir(packs_list, LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(packs_list, LV_SCROLLBAR_MODE_ACTIVE);
+
+    packs_status_label = lv_label_create(expression_packs_container);
+    lv_obj_set_width(packs_status_label, 292);
+    lv_obj_set_style_text_font(packs_status_label, &BUILTIN_TEXT_FONT, 0);
+    lv_obj_set_style_text_color(packs_status_label, lv_color_hex(0x909896), 0);
+    lv_obj_set_style_text_align(packs_status_label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_label_set_long_mode(packs_status_label, LV_LABEL_LONG_DOT);
+    lv_obj_align(packs_status_label, LV_ALIGN_CENTER, 0, 105);
+
+    CreateTextButton(expression_packs_container, "重新扫描", 118, 40, -65, 145, PackRescanEvent);
+    CreateTextButton(expression_packs_container, "返回菜单", 118, 40, 65, 145, BackToMenuEvent);
+    lv_obj_add_flag(expression_packs_container, LV_OBJ_FLAG_HIDDEN);
 }
 
 void CreateInfoPage(lv_obj_t* screen) {
@@ -594,11 +823,13 @@ extern "C" void feature_ui_create(void) {
     CreateTimerPage(screen);
     CreateCarSettingsPage(screen);
     CreateSystemSettingsPage(screen);
+    CreateExpressionPacksPage(screen);
     CreateInfoPage(screen);
     ui_bridge_register_page_with_cycle(PAGE_RING_MENU, &menu_container, false);
     ui_bridge_register_page_with_cycle(PAGE_TIMER, &timer_container, false);
     ui_bridge_register_page_with_cycle(PAGE_CAR_SETTINGS, &car_settings_container, false);
     ui_bridge_register_page_with_cycle(PAGE_SYSTEM_SETTINGS, &system_settings_container, false);
+    ui_bridge_register_page_with_cycle(PAGE_EXPRESSION_PACKS, &expression_packs_container, false);
     ui_bridge_register_page_with_cycle(PAGE_DEVICE_INFO, &info_container, false);
     ui_refresh_timer = lv_timer_create(UiRefreshCallback, 250, nullptr);
     (void)ui_refresh_timer;
@@ -610,8 +841,9 @@ extern "C" bool feature_ui_is_feature_page(const char* page_id) {
     return page_id && (std::strcmp(page_id, PAGE_RING_MENU) == 0 ||
                        std::strcmp(page_id, PAGE_TIMER) == 0 ||
                        std::strcmp(page_id, PAGE_CAR_SETTINGS) == 0 ||
-                       std::strcmp(page_id, PAGE_SYSTEM_SETTINGS) == 0 ||
-                       std::strcmp(page_id, PAGE_DEVICE_INFO) == 0);
+                        std::strcmp(page_id, PAGE_SYSTEM_SETTINGS) == 0 ||
+                        std::strcmp(page_id, PAGE_EXPRESSION_PACKS) == 0 ||
+                        std::strcmp(page_id, PAGE_DEVICE_INFO) == 0);
 }
 
 extern "C" void feature_ui_open_menu(void) {

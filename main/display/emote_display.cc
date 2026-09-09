@@ -105,6 +105,7 @@ namespace emote
     static gfx_obj_t *g_obj_anim_listen = nullptr;
     static gfx_obj_t *g_obj_img_status = nullptr;
     static gfx_obj_t *g_obj_anim_emerg_dlg = nullptr;
+    static gfx_obj_t *g_obj_label_car_debug = nullptr;
     static lv_obj_t *g_power_overlay_container = nullptr;
     static lv_obj_t *g_power_overlay_label = nullptr;
 
@@ -395,6 +396,17 @@ namespace emote
         gfx_obj_align(g_obj_anim_emerg_dlg, GFX_ALIGN_CENTER, 0, 0);
         gfx_obj_set_visible(g_obj_anim_emerg_dlg, false);
 
+        // Optional car-mode diagnostic text. It is created after the full-face
+        // animation so it stays above that animation, and is hidden by default.
+        g_obj_label_car_debug = gfx_label_create(engine_handle);
+        gfx_obj_align(g_obj_label_car_debug, GFX_ALIGN_TOP_MID, 0, 14);
+        gfx_obj_set_size(g_obj_label_car_debug, 220, 34);
+        gfx_label_set_text(g_obj_label_car_debug, "");
+        gfx_label_set_color(g_obj_label_car_debug, GFX_COLOR_HEX(0xFF8A35));
+        gfx_label_set_text_align(g_obj_label_car_debug, GFX_TEXT_ALIGN_CENTER);
+        gfx_label_set_font(g_obj_label_car_debug, (gfx_font_t)&BUILTIN_TEXT_FONT);
+        gfx_obj_set_visible(g_obj_label_car_debug, false);
+
         g_obj_battery = gfx_img_create(engine_handle);
         gfx_obj_align(g_obj_battery, GFX_ALIGN_TOP_MID, 100, 40);
         gfx_img_set_src(g_obj_battery, (void *)&power);
@@ -671,7 +683,13 @@ namespace emote
         InitializeEngine(panel, panel_io, width, height);
     }
 
-    EmoteDisplay::~EmoteDisplay() = default;
+    EmoteDisplay::~EmoteDisplay()
+    {
+        // The animation engine keeps a raw pointer to the active EAF stream.  A
+        // TF-pack stream is owned by owned_car_data_, so stop the animation
+        // before that shared buffer is released during object destruction.
+        StopCarEmotion();
+    }
 
     void EmoteDisplay::SetEmotion(const char *const emotion)
     {
@@ -1256,6 +1274,10 @@ namespace emote
         {
             gfx_label_set_font(g_obj_label_clock, const_cast<void *>(static_cast<const void *>(text_font_->font())));
         }
+        if (g_obj_label_car_debug && text_font_)
+        {
+            gfx_label_set_font(g_obj_label_car_debug, const_cast<void *>(static_cast<const void *>(text_font_->font())));
+        }
     }
 
     AssetData EmoteDisplay::GetEmojiData(const std::string &name) const
@@ -1340,6 +1362,10 @@ namespace emote
         {
             gfx_obj_set_visible(g_obj_anim_emerg_dlg, false);
         }
+        if (was_car && g_obj_label_car_debug)
+        {
+            gfx_obj_set_visible(g_obj_label_car_debug, false);
+        }
 
         if (g_obj_anim_eye && !was_car)
         {
@@ -1417,27 +1443,93 @@ namespace emote
         return true;
     }
 
-    bool EmoteDisplay::ShowCarEmotion(const char* name)
+    bool EmoteDisplay::ShowCarEmotion(const char* name, const char* debug_text)
     {
         if (!engine_ || !name || std::strncmp(name, "car_", 4) != 0) return false;
         DisplayLockGuard lock(this);
         const auto current = engine_->GetCurrentDialogEmoji();
         if ((!current.empty() && current.compare(0, 4, "car_") != 0) ||
             (low_battery_popup_ && gfx_obj_get_visible(low_battery_popup_)) ||
-            esp_timer_get_time() < car_block_until_us_) return false;
-        if (current == name) return true; // Do not restart an unchanged animation.
+            esp_timer_get_time() < car_block_until_us_) {
+            SetVisible(g_obj_label_car_debug, false);
+            return false;
+        }
+        if (current == name) {
+            if (g_obj_label_car_debug && debug_text && debug_text[0]) {
+                gfx_label_set_text(g_obj_label_car_debug, debug_text);
+                gfx_obj_set_visible(g_obj_label_car_debug, true);
+            } else {
+                SetVisible(g_obj_label_car_debug, false);
+            }
+            return true; // Update debug text without restarting the animation.
+        }
         const bool entering = current.compare(0, 4, "car_") != 0;
         if (entering) HideChromeForCarEmotion();
         const bool shown = engine_->SetDialogAnim(name, this);
+        if (shown && g_obj_label_car_debug && debug_text && debug_text[0]) {
+            gfx_label_set_text(g_obj_label_car_debug, debug_text);
+            gfx_obj_set_visible(g_obj_label_car_debug, true);
+        } else {
+            SetVisible(g_obj_label_car_debug, false);
+        }
         if (!shown && entering) RestoreChromeAfterCarEmotion();
+        if (shown && owned_car_data_ && owned_car_name_ != name) {
+            const std::string old_name = std::move(owned_car_name_);
+            owned_car_data_.reset();
+            if (!old_name.empty()) emoji_data_map_.erase(old_name);
+        }
         return shown;
+    }
+
+    bool EmoteDisplay::ShowOwnedCarEmotion(const char* animation_id, std::shared_ptr<uint8_t> data,
+                                           size_t size, uint8_t fps, bool loop,
+                                           const char* debug_text)
+    {
+        if (!animation_id || std::strncmp(animation_id, "car_", 4) != 0 || !data || size == 0) {
+            return false;
+        }
+        const std::string new_name(animation_id);
+        emoji_data_map_[new_name] = AssetData(data.get(), size, fps, loop, false);
+        const std::string previous_name = owned_car_name_;
+        auto previous_data = owned_car_data_;
+        // Hold the new buffer before handing its pointer to the decoder.
+        owned_car_data_ = std::move(data);
+        owned_car_name_ = new_name;
+        if (!ShowCarEmotion(new_name.c_str(), debug_text)) {
+            emoji_data_map_.erase(new_name);
+            owned_car_name_ = previous_name;
+            owned_car_data_ = std::move(previous_data);
+            return false;
+        }
+        if (!previous_name.empty() && previous_name != new_name) emoji_data_map_.erase(previous_name);
+        return true;
+    }
+
+    void EmoteDisplay::UpdateCarDebugText(const char* debug_text)
+    {
+        if (!engine_ || engine_->GetCurrentDialogEmoji().compare(0, 4, "car_") != 0) return;
+        DisplayLockGuard lock(this);
+        if (g_obj_label_car_debug && debug_text && debug_text[0]) {
+            gfx_label_set_text(g_obj_label_car_debug, debug_text);
+            gfx_obj_set_visible(g_obj_label_car_debug, true);
+        } else {
+            SetVisible(g_obj_label_car_debug, false);
+        }
     }
 
     void EmoteDisplay::StopCarEmotion()
     {
         if (!engine_) return;
         DisplayLockGuard lock(this);
-        if (engine_->GetCurrentDialogEmoji().compare(0, 4, "car_") == 0) StopAnimDialog();
+        if (engine_->GetCurrentDialogEmoji().compare(0, 4, "car_") == 0) {
+            if (g_obj_anim_emerg_dlg) gfx_anim_stop(g_obj_anim_emerg_dlg);
+            StopAnimDialog();
+        }
+        if (owned_car_data_) {
+            const std::string old_name = std::move(owned_car_name_);
+            owned_car_data_.reset();
+            if (!old_name.empty()) emoji_data_map_.erase(old_name);
+        }
     }
 
     void EmoteDisplay::RefreshAll()

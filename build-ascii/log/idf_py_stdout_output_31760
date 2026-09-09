@@ -1,0 +1,10 @@
+Command: cmake -G Ninja -DPYTHON_DEPS_CHECKED=1 -DPYTHON=C:\Users\sonic\.espressif\python_env\idf5.5_py3.13_env\Scripts\python.exe -DESP_PLATFORM=1 -DCMAKE_MAKE_PROGRAM=C:\Users\sonic\.espressif\tools\ninja\1.12.1\ninja.exe -DCMAKE_C_COMPILER=C:\Users\sonic\.espressif\tools\xtensa-esp-elf\esp-14.2.0_20251107\xtensa-esp-elf\bin\xtensa-esp32s3-elf-gcc.exe -DCMAKE_CXX_COMPILER=C:\Users\sonic\.espressif\tools\xtensa-esp-elf\esp-14.2.0_20251107\xtensa-esp-elf\bin\xtensa-esp32s3-elf-g++.exe -DCMAKE_ASM_COMPILER=C:\Users\sonic\.espressif\tools\xtensa-esp-elf\esp-14.2.0_20251107\xtensa-esp-elf\bin\xtensa-esp32s3-elf-gcc.exe -DCCACHE_ENABLE=1 C:\Users\sonic\OneDrive\ESP\喵伴\2.0\cyberkit
+-- IDF_TARGET is not set, guessed 'esp32s3' from sdkconfig 'C:/Users/sonic/OneDrive/ESP/喵伴/2.0/cyberkit/sdkconfig'
+-- Found Git: D:/Scoop/shims/git.exe (found version "2.33.1.windows.1")
+-- Minimal build - OFF
+-- The C compiler identification is unknown
+-- The CXX compiler identification is unknown
+-- The ASM compiler identification is unknown
+-- Found assembler: xtensa-esp32s3-elf-gcc
+-- Warning: Did not find file Compiler/-ASM
+-- Configuring incomplete, errors occurred!

@@ -955,6 +955,7 @@ void EspS3Cat::Initializebq27220()
     
 }
 void EspS3Cat::InitializeTFCard(){
+    tf_card_mounted_.store(false);
     esp_err_t ret;
 
     esp_vfs_fat_sdmmc_mount_config_t mount_config = {
@@ -988,7 +989,15 @@ void EspS3Cat::InitializeTFCard(){
         return;
     }
     ESP_LOGI(TAG, "Filesystem mounted"); // 提示挂载成功
+    tf_card_mounted_.store(true);
     sdmmc_card_print_info(stdout, card); // 终端打印SD卡的一些信息
+}
+
+bool EspS3Cat::EnsureTfCardMounted() {
+    if (tf_card_mounted_.load()) return true;
+    std::lock_guard<std::mutex> lock(tf_card_mutex_);
+    if (!tf_card_mounted_.load()) InitializeTFCard();
+    return tf_card_mounted_.load();
 }
 
 EspS3Cat::EspS3Cat()
